@@ -1,6 +1,7 @@
 [project]
 name = "frontier-plugins"
 version = "1.0.0"
+license = "Apache-2.0"
 description = "Frontier extension API compatibility and metadata-only plugin discovery"
 requires-python = ">=3.11,<3.14"
 readme = 'README.md'
