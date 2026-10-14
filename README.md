@@ -53,6 +53,7 @@ Python plugins use entry points (`frontier.connectors`, ...); see
 
 | Repository | What it is |
 |---|---|
+| [arrayroute](https://github.com/DimensionLab/arrayroute) | Bounded scientific array selection and measured storage query planning. |
 | **frontier-format** (this repository) | Frontier data model and dataset format: the frontier-dataset specification, the plugin contract, and reference readers/writers in Rust and Python. |
 | [frontier-connectors](https://github.com/DimensionLab/frontier-connectors) | Connector plugins that turn CFD/CAE solver output (OpenFOAM, VTK, Fluent, STAR-CCM+, CGNS, LS-DYNA, ...) into Frontier datasets. Write your own in an afternoon. |
 | [frontier-sdk](https://github.com/DimensionLab/frontier-sdk) | Frontier Python SDK: offline-first experiment tracking for physics ML, the native Rust core, and the NVIDIA PhysicsNeMo bridge. |
