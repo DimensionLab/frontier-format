@@ -331,3 +331,18 @@ def test_plain_pipelines_stay_plain_and_error_lines_are_one_line() -> None:
     assert is_board_document({"nodes": [{"id": "a", "kind": "training_run"}]})
     assert is_board_document({"nodes": [], "run": {}})
     assert one_line("Traceback\n  File x\nValueError: bad split\n") == "ValueError: bad split"
+
+
+def test_finished_run_sends_undefined_metrics_as_null(tmp_path, monkeypatch):
+    from frontier._server import ServerClient
+    from frontier_data.board_run import BoardRun
+
+    updates = []
+    monkeypatch.setenv("FRONTIER_SERVER", "http://localhost:8787")
+    monkeypatch.setattr(
+        ServerClient, "patch_run", lambda self, run, **kwargs: updates.append(kwargs)
+    )
+    BoardRun(_doc(tmp_path), workers=1)._finish(
+        "run", {"metric/r2": float("nan"), "metric/mae": 0.1}
+    )
+    assert updates == [{"state": "finished", "summary": {"metric/r2": None, "metric/mae": 0.1}}]

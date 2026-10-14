@@ -8,6 +8,13 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Public Rust trait contract; independent of the application and plugin release versions.
+pub const PLUGIN_API_MAJOR: u32 = 1;
+
+fn default_api_major() -> u32 {
+    PLUGIN_API_MAJOR
+}
+
 /// Families of plugins the core knows how to route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -31,6 +38,8 @@ pub struct PluginManifest {
     pub id: String,
     pub name: String,
     pub version: String,
+    #[serde(default = "default_api_major")]
+    pub api_major: u32,
     pub kind: PluginKind,
     /// Core data-model version this plugin was built against.
     pub data_model_version: u32,
@@ -41,4 +50,44 @@ pub struct PluginManifest {
 /// Minimal behaviour every plugin provides.
 pub trait Plugin: Send + Sync {
     fn manifest(&self) -> &PluginManifest;
+}
+
+impl PluginManifest {
+    pub fn check_compatibility(&self) -> Result<(), String> {
+        if self.api_major != PLUGIN_API_MAJOR {
+            return Err(format!(
+                "{} requires plugin API {}, host provides {}",
+                self.id, self.api_major, PLUGIN_API_MAJOR
+            ));
+        }
+        if self.data_model_version != crate::DATA_MODEL_VERSION {
+            return Err(format!(
+                "{} requires data model {}, host provides {}",
+                self.id,
+                self.data_model_version,
+                crate::DATA_MODEL_VERSION
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn independent_plugin_release_and_legacy_manifest() {
+        let mut manifest: PluginManifest = serde_json::from_value(serde_json::json!({
+            "id": "community-reader", "name": "Community reader", "version": "17.3.0",
+            "kind": "connector", "data_model_version": crate::DATA_MODEL_VERSION
+        }))
+        .unwrap();
+        assert!(manifest.check_compatibility().is_ok());
+        manifest.api_major = 2;
+        assert!(manifest.check_compatibility().is_err());
+        manifest.api_major = 1;
+        manifest.data_model_version = crate::DATA_MODEL_VERSION + 1;
+        assert!(manifest.check_compatibility().is_err());
+    }
 }

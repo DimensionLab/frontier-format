@@ -419,7 +419,9 @@ class Registry:
             return
         for ep in eps:
             try:
-                obj = ep.load()
+                from frontier_plugins import load_entry_point
+
+                obj = load_entry_point(ep)
             except Exception as exc:
                 log.warning("entry point %s failed to load: %s", ep.name, exc)
                 continue

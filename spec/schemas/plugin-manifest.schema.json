@@ -11,9 +11,14 @@
     "kind": {
       "type": "string",
       "enum": [
+        "benchmark",
         "connector",
+        "converter",
         "exporter",
-        "importer"
+        "geometry",
+        "host",
+        "importer",
+        "operation"
       ]
     },
     "name": {
@@ -23,7 +28,14 @@
       "type": "string"
     },
     "data_model_version": {
-      "type": "string"
+      "type": "string",
+      "default": ""
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "vendor": {
       "type": "string",
@@ -175,8 +187,7 @@
     "id",
     "kind",
     "name",
-    "version",
-    "data_model_version"
+    "version"
   ],
   "$defs": {
     "OptionalDependency": {

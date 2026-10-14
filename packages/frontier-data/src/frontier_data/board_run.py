@@ -186,6 +186,23 @@ class BoardRun:
         mine = [n for n in data_nodes if self.action[n["id"]] == "run"]
         if not mine:
             return
+        targets = {
+            self.info.get("execution_target")
+            or n.get("params", {}).get("execution_target")
+            or "local"
+            for n in mine
+        }
+        if targets != {"local"}:
+            if len(targets) != 1:
+                for node in mine:
+                    self.failed(
+                        node["id"],
+                        "Streaming preparation nodes share one execution location. "
+                        "Choose the same environment for the connected data flow.",
+                    )
+                return
+            self._remote_data(data_nodes, next(iter(targets)))
+            return
         report = {n["id"] for n in mine}
         context: dict[str, Any] = {}
         sinks = [n for n in data_nodes if n["kind"] == "dataset_sink"]
@@ -287,6 +304,38 @@ class BoardRun:
             if self.state.get(n["id"]) == "succeeded":
                 emit("step.output", n["id"], data={"output": dataset_output()[0]})
 
+    def _remote_data(self, nodes: list[dict[str, Any]], target: str) -> None:
+        import copy
+
+        copied = copy.deepcopy(nodes)
+        for node in nodes:
+            if self.action[node["id"]] == "run":
+                self.running(node["id"])
+        work = self._work("__data__").resolve()
+        for node in copied:
+            node.setdefault("params", {}).pop("execution_target", None)
+            if node["kind"] == "dataset_sink":
+                node["params"]["out_dir"] = str(work / "datasets" / node["id"])
+        info = {**self.info, "work_dir": str(work), "datasets_dir": str(work / "datasets")}
+        info.pop("execution_target", None)
+        doc = {**self.doc, "nodes": copied, "run": info}
+        self.by_id["__data__"] = {
+            "id": "__data__",
+            "params": {"execution_target": target},
+            "inputs": [],
+        }
+        try:
+            code, last = self._child(
+                "__data__",
+                [sys.executable, "-m", "frontier_data", "pipeline", "--json", json.dumps(doc)],
+            )
+            if code != 0:
+                for node in nodes:
+                    if self.action[node["id"]] == "run" and not self.usable(node["id"]):
+                        self.failed(node["id"], last or "Remote preparation failed")
+        finally:
+            self.by_id.pop("__data__", None)
+
     # -- steps that run another tool ---------------------------------------------------------
     def _input_outputs(self, node: dict[str, Any]) -> list[dict[str, Any]]:
         return [o for i in node.get("inputs", []) for o in self.outputs.get(i, [])]
@@ -301,7 +350,32 @@ class BoardRun:
         env["PYTHONUNBUFFERED"] = "1"
         env.pop("FRONTIER_RUN_ID", None)
         env.update(env_extra or {})
-        say("$ " + " ".join(argv[1:] if argv[0] == sys.executable else argv), step)
+        target = self.info.get("execution_target") or self.by_id.get(step, {}).get(
+            "params", {}
+        ).get("execution_target")
+        bookkeeping = argv[1:4] == ["-m", "frontier_data.board_run", "upload"]
+        if target and target != "local" and not bookkeeping:
+            payload = {
+                "target": target,
+                "step": step,
+                "argv": argv,
+                "output": str(self._work(step).resolve()),
+                "context": [
+                    self.by_id[step].get("params", {}),
+                    self._input_outputs(self.by_id[step]),
+                ],
+            }
+            argv = [
+                sys.executable,
+                "-m",
+                "frontier_data.remote",
+                "client",
+                "--json",
+                json.dumps(payload),
+            ]
+            say(f"Running on {target}; staging inputs before execution", step)
+        else:
+            say("$ " + " ".join(argv[1:] if argv[0] == sys.executable else argv), step)
         proc = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1
         )
@@ -309,6 +383,23 @@ class BoardRun:
         tail = self._tail[step] = []
         assert proc.stdout is not None
         for line in proc.stdout:
+            if step == "__data__" and EVENT_PREFIX in line:
+                try:
+                    event = json.loads(line.split(EVENT_PREFIX, 1)[1])
+                except ValueError:
+                    event = {}
+                if event.get("type") == "run.finished":
+                    continue
+                sid = event.get("step")
+                if sid == "__data__" and event.get("type") == "step.progress":
+                    for node in self.nodes:
+                        if node["kind"] in REGISTRY and self.state.get(node["id"]) == "running":
+                            emit("step.progress", node["id"], data=event.get("data", {}))
+                    continue
+                if isinstance(sid, str) and sid in self.by_id and event.get("type") == "step.state":
+                    self.state[sid] = event.get("to", "running")
+                    if event.get("data", {}).get("outputs"):
+                        self.outputs[sid] = event["data"]["outputs"]
             sys.stdout.write(line)
             sys.stdout.flush()
             if EVENT_PREFIX in line:
@@ -318,10 +409,13 @@ class BoardRun:
                     continue
                 out = (ev.get("data") or {}).get("output")
                 if ev.get("type") == "step.output" and isinstance(out, dict):
+                    output_step = ev.get("step", step) if step == "__data__" else step
                     kept = [
-                        o for o in self.outputs.get(step, []) if o.get("port") != out.get("port")
+                        o
+                        for o in self.outputs.get(output_step, [])
+                        if o.get("port") != out.get("port")
                     ]
-                    self.outputs[step] = [*kept, out]
+                    self.outputs[output_step] = [*kept, out]
             elif line.strip():
                 # a record says it in its message; one that wraps is one sentence
                 written = joblog.is_record(line)
@@ -574,6 +668,43 @@ class BoardRun:
         code, last = self._child(step, [sys.executable, "-m", *argv])
         why = self._reason(step, last)
         if code == 0:
+            target = self.info.get("execution_target") or p.get("execution_target")
+            if target and target != "local":
+                directory = self._work(step)
+                config_file = directory / "config.json"
+                config = json.loads(config_file.read_text()) if config_file.exists() else {}
+                run_id = self._hold(step, ["training", "remote"], config)
+                if not run_id:
+                    self.failed(
+                        step,
+                        "Training finished, but its run could not be registered. "
+                        "Files are retained in the job output directory.",
+                    )
+                    return
+                from frontier._server import ServerClient
+
+                files = [
+                    (path, str(path.relative_to(directory)))
+                    for path in directory.rglob("*")
+                    if path.is_file()
+                ]
+                uploaded = _upload(ServerClient(str(os.environ["FRONTIER_SERVER"])), run_id, files)
+                if len(uploaded) != len(files):
+                    self.failed(
+                        step,
+                        "Training finished, but artifact synchronization failed. "
+                        "Local result files are retained.",
+                    )
+                    return
+                output = {
+                    "port": "model",
+                    "kind": "run",
+                    "id": run_id,
+                    "name": str(directory.resolve()),
+                }
+                emit("step.output", step, data={"output": output})
+                self.outputs[step] = [output]
+                self._finish(run_id, {"execution_target": target})
             self.succeeded(step)
         elif "train-ready" in why or "not versioned" in why:
             # the gate refused the dataset: say what to do about it on the node
@@ -613,10 +744,11 @@ class BoardRun:
         server = os.environ.get("FRONTIER_SERVER")
         if not server or not run_id:
             return
+        from frontier._run import _json_safe
         from frontier._server import ServerClient
 
         try:
-            ServerClient(server).patch_run(run_id, state="finished", summary=summary)
+            ServerClient(server).patch_run(run_id, state="finished", summary=_json_safe(summary))
         except Exception as exc:  # noqa: BLE001 - best effort
             say(f"could not mark run {run_id} finished: {one_line(str(exc))}", level="warn")
 

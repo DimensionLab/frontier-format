@@ -69,9 +69,6 @@ def test_providers_are_found_by_id_and_can_be_registered():
     class Flat:
         id, title, length_units = "flat", "Flat plate", "mm"
 
-        def conditions(self, params: dict[str, float]) -> dict[str, float]:
-            return {}
-
         def parameters(self):
             return [ParameterSpec("side", 1.0, 0.1, 10.0, "mm")]
 

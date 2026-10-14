@@ -4,7 +4,7 @@ name = "frontier-format-workspace"
 version = "0.0.0"
 description = "uv workspace root of frontier-format"
 requires-python = ">=3.11,<3.14"
-dependencies = ["frontier-data", "frontier-prep"]
+dependencies = ["frontier-data", "frontier-plugins", "frontier-prep"]
 
 [dependency-groups]
 dev = ["pytest>=8.3", "pytest-cov>=6.0", "ruff>=0.13", "pyright>=1.1.400"]
@@ -13,10 +13,11 @@ dev = ["pytest>=8.3", "pytest-cov>=6.0", "ruff>=0.13", "pyright>=1.1.400"]
 package = false
 
 [tool.uv.workspace]
-members = ["packages/frontier-data/", "packages/frontier-prep/"]
+members = ["packages/frontier-data/", "packages/frontier-plugins/", "packages/frontier-prep/"]
 
 [tool.uv.sources]
 frontier-data = { workspace = true }
+frontier-plugins = { workspace = true }
 frontier-prep = { workspace = true }
 
 [tool.ruff]
@@ -28,8 +29,8 @@ src = ["packages/*/src"]
 select = ["E", "F", "I", "B", "UP", "N", "W"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["frontier", "frontier_agent", "frontier_connectors", "frontier_data", "frontier_deploy", "frontier_eval", "frontier_examples", "frontier_explain", "frontier_hub", "frontier_physicsnemo", "frontier_planner", "frontier_prep", "frontier_train"]
+known-first-party = ["frontier", "frontier_agent", "frontier_connectors", "frontier_data", "frontier_deploy", "frontier_eval", "frontier_examples", "frontier_explain", "frontier_hub", "frontier_physicsnemo", "frontier_planner", "frontier_plugins", "frontier_prep", "frontier_train"]
 
 [tool.pytest.ini_options]
-testpaths = ["packages/frontier-data/", "packages/frontier-prep/"]
+testpaths = ["packages/frontier-data/", "packages/frontier-plugins/", "packages/frontier-prep/"]
 addopts = "-q --import-mode=importlib"

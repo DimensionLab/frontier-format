@@ -14,6 +14,7 @@ model, boundary conditions, mesh statistics, fidelity tier).
 - `crates/frontier-data/`: Rust crate `frontier-data`
 - `crates/frontier-prep-kernels/`: Rust crate `frontier-prep-kernels`
 - `packages/frontier-data/`: Python package `frontier-data`
+- `packages/frontier-plugins/`: Python package `frontier-plugins`
 - `packages/frontier-prep/`: Python package `frontier-prep`
 - `spec/`: the normative specification (when present), licensed CC-BY-4.0
 

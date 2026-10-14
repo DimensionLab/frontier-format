@@ -280,8 +280,15 @@ def providers() -> dict[str, GeometryProvider]:
 
         for ep in entry_points(group=ENTRY_POINT_GROUP):
             if ep.name not in _PROVIDERS:
-                loaded = ep.load()
-                register(loaded() if isinstance(loaded, type) else loaded)
+                from frontier_plugins import load_entry_point
+
+                try:
+                    loaded = load_entry_point(ep)
+                    register(loaded() if isinstance(loaded, type) else loaded)
+                except Exception as exc:
+                    import logging
+
+                    logging.getLogger(__name__).warning("Geometry plugin %s: %s", ep.name, exc)
     except Exception:  # noqa: BLE001 - a broken plugin must not take the built-ins down
         pass
     return dict(_PROVIDERS)
