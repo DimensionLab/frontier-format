@@ -258,7 +258,7 @@ def test_transient_predictions_roundtrip(tmp_path: Path) -> None:
         kind="grid",
         spacing=[0.1, 0.1],
         ensemble=ens,
-        info={"split": "test", "history": 1},
+        info={"split": "test", "history": 1, "time_units": "t u0/H"},
     )
     d = vortex_street_mesh(n_target=120, n_steps=4)
     write_transient_prediction(
@@ -289,6 +289,7 @@ def test_transient_predictions_roundtrip(tmp_path: Path) -> None:
         "w_true",
     ]
     assert s.attrs["sample_kind"] == "grid"
+    assert s.attrs["time_units"] == "t u0/H"
     np.testing.assert_allclose(s.field("u_err", t=2), 0.1, atol=1e-6)
     assert s.dims("w_pred") == ["time", "x", "y", "component"]
     sm = Sample.open_store(tmp_path / "m.zarr")

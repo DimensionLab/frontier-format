@@ -163,6 +163,7 @@ def write_transient_prediction(
             boundary_conditions,
             static,
             std,
+            str(meta.get("time_units", "s")),
         )
     return out_dir / f"{sample_id}.npz"
 
@@ -180,6 +181,7 @@ def _write_store(
     boundary_conditions: Mapping[str, Any] | None,
     static: Mapping[str, np.ndarray] | None,
     std: Mapping[str, np.ndarray] | None = None,
+    time_units: str = "s",
 ) -> None:
     """Reuse the dataset writers in a scratch directory, then move the store into place."""
     from frontier_data.arrays import write_grid_sample, write_mesh_sample, write_points_sample
@@ -202,6 +204,7 @@ def _write_store(
             "s",
             fields=fields,
             times=times,
+            time_units=time_units,
             ndim=nd,
             spacing=spacing,
             origin=origin,
@@ -210,11 +213,26 @@ def _write_store(
         )
     elif kind == "mesh" and cells is not None and points is not None:
         write_mesh_sample(
-            tmp, "s", points=points, cells=cells, fields=fields, times=times, static=static
+            tmp,
+            "s",
+            points=points,
+            cells=cells,
+            fields=fields,
+            times=times,
+            static=static,
+            time_units=time_units,
         )
     elif points is not None:
         kind = "point_cloud"
-        write_points_sample(tmp, "s", points=points, fields=fields, times=times, static=static)
+        write_points_sample(
+            tmp,
+            "s",
+            points=points,
+            fields=fields,
+            times=times,
+            static=static,
+            time_units=time_units,
+        )
     else:
         raise ValueError("mesh / point_cloud predictions need `points`")
     if path.exists():

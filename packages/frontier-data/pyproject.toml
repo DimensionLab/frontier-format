@@ -1,6 +1,6 @@
 [project]
 name = "frontier-data"
-version = "0.9.0"
+version = "0.9.1"
 description = "DimensionLab Frontier – dataset ingestion, quality and splits for CFD surrogate training"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

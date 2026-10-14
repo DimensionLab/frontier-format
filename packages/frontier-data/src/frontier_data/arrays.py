@@ -508,6 +508,7 @@ def write_mesh_sample(
             "point_dim": int(pts.shape[1]),
             "bounds": _bounds(pts),
             "static": static_names,
+            "time_units": time_units,
             **(attrs or {}),
         },
     )
@@ -591,6 +592,7 @@ def write_points_sample(
             "point_dim": int(pts.shape[1]),
             "bounds": _bounds(pts),
             "static": static_names,
+            "time_units": time_units,
             **(attrs or {}),
         },
     )
@@ -732,6 +734,7 @@ def write_grid_sample(
             "origin": org,
             "boundary_conditions": dict(boundary_conditions or {}),
             "static": static_names,
+            "time_units": time_units,
             **(attrs or {}),
         },
     )
@@ -895,7 +898,12 @@ def write_surface_sample(
         store,
         "surface",
         tt,
-        {"lod_levels": sorted(lods), "static": static_names, **(attrs or {})},
+        {
+            "lod_levels": sorted(lods),
+            "static": static_names,
+            "time_units": time_units,
+            **(attrs or {}),
+        },
     )
     sdir = root / "samples" / sample_id
     if stl_path is not None and Path(stl_path).exists():

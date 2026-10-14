@@ -75,6 +75,9 @@ def test_providers_are_found_by_id_and_can_be_registered():
         def parameters(self):
             return [ParameterSpec("side", 1.0, 0.1, 10.0, "mm")]
 
+        def conditions(self, params: dict[str, float]) -> dict[str, float]:
+            return {"side": params.get("side", 1.0)}
+
         def surface(self, params, *, resolution=24):
             from frontier_data.mesh import SurfaceMesh
 
