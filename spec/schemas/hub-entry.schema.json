@@ -1,0 +1,1782 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/hub-entry.schema.json",
+  "title": "Entry",
+  "$defs": {
+    "ApiSource": {
+      "additionalProperties": false,
+      "description": "Programmatic or portal access that is not a plain file download (documented only).",
+      "properties": {
+        "type": {
+          "const": "api",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "client": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "title": "ApiSource",
+      "type": "object"
+    },
+    "Citation": {
+      "additionalProperties": false,
+      "properties": {
+        "bibtex": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bibtex"
+        },
+        "doi": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Doi"
+        },
+        "arxiv": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arxiv"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        }
+      },
+      "title": "Citation",
+      "type": "object"
+    },
+    "Compute": {
+      "additionalProperties": false,
+      "description": "What one simulated case cost its authors, as the paper or card states it. Reports\nquote it against the surrogate's inference time. Every number optional; ``source``\nsays where it comes from, or ``\"not published\"``.",
+      "properties": {
+        "wall_clock_hours_per_case": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wall Clock Hours Per Case"
+        },
+        "cores": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cores"
+        },
+        "nodes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nodes"
+        },
+        "node_hours_per_case": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Hours Per Case"
+        },
+        "hardware": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hardware"
+        },
+        "source": {
+          "default": "not published",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "title": "Compute",
+      "type": "object"
+    },
+    "DataverseSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "dataverse",
+          "title": "Type",
+          "type": "string"
+        },
+        "server": {
+          "title": "Server",
+          "type": "string"
+        },
+        "doi": {
+          "title": "Doi",
+          "type": "string"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "server",
+        "doi"
+      ],
+      "title": "DataverseSource",
+      "type": "object"
+    },
+    "GcsSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "gcs",
+          "title": "Type",
+          "type": "string"
+        },
+        "bucket": {
+          "title": "Bucket",
+          "type": "string"
+        },
+        "prefix": {
+          "default": "",
+          "title": "Prefix",
+          "type": "string"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "bucket"
+      ],
+      "title": "GcsSource",
+      "type": "object"
+    },
+    "Geometry": {
+      "additionalProperties": false,
+      "properties": {
+        "sample_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "surface",
+                "mesh",
+                "grid",
+                "point_cloud",
+                "particles",
+                "graph",
+                "tabular"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Kind"
+        },
+        "typical_cells": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Typical Cells"
+        }
+      },
+      "title": "Geometry",
+      "type": "object"
+    },
+    "GitSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "git",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        },
+        "lfs": {
+          "default": false,
+          "title": "Lfs",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "title": "GitSource",
+      "type": "object"
+    },
+    "GithubReleaseSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "github-release",
+          "title": "Type",
+          "type": "string"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tag"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "repo"
+      ],
+      "title": "GithubReleaseSource",
+      "type": "object"
+    },
+    "GlobusSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "globus",
+          "title": "Type",
+          "type": "string"
+        },
+        "endpoint": {
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "path": {
+          "default": "/",
+          "title": "Path",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "type",
+        "endpoint"
+      ],
+      "title": "GlobusSource",
+      "type": "object"
+    },
+    "HttpSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "http",
+          "title": "Type",
+          "type": "string"
+        },
+        "urls": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Urls",
+          "type": "array"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "HttpSource",
+      "type": "object"
+    },
+    "HuggingFaceSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "huggingface",
+          "title": "Type",
+          "type": "string"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        },
+        "repo_type": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "model",
+            "space"
+          ],
+          "title": "Repo Type",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        },
+        "gated": {
+          "default": false,
+          "title": "Gated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "repo"
+      ],
+      "title": "HuggingFaceSource",
+      "type": "object"
+    },
+    "KaggleSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "kaggle",
+          "title": "Type",
+          "type": "string"
+        },
+        "dataset": {
+          "title": "Dataset",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "type",
+        "dataset"
+      ],
+      "title": "KaggleSource",
+      "type": "object"
+    },
+    "License": {
+      "additionalProperties": false,
+      "properties": {
+        "spdx": {
+          "title": "Spdx",
+          "type": "string"
+        },
+        "commercial_use": {
+          "title": "Commercial Use",
+          "type": "boolean"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "redistribution": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Redistribution"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "spdx",
+        "commercial_use"
+      ],
+      "title": "License",
+      "type": "object"
+    },
+    "MetricDef": {
+      "additionalProperties": false,
+      "description": "Benchmark metric definition (``kind: benchmark`` entries).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "definition": {
+          "title": "Definition",
+          "type": "string"
+        },
+        "lower_is_better": {
+          "default": true,
+          "title": "Lower Is Better",
+          "type": "boolean"
+        },
+        "frontier_eval_metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frontier Eval Metric"
+        }
+      },
+      "required": [
+        "name",
+        "definition"
+      ],
+      "title": "MetricDef",
+      "type": "object"
+    },
+    "ModelInfo": {
+      "additionalProperties": false,
+      "description": "Pretrained checkpoint facts (``kind: model`` entries, ``catalog/models/<id>.yaml``).\n\nThe entry's ``license`` is the licence of the *weights*; ``code_license`` the loader code's.\n``size.bytes`` is the checkpoint size, ``sources`` where the weights are.",
+      "properties": {
+        "architecture": {
+          "title": "Architecture",
+          "type": "string"
+        },
+        "family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Family"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "variants": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Variants",
+          "type": "array"
+        },
+        "trained_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trained On",
+          "type": "array"
+        },
+        "trained_on_other": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trained On Other",
+          "type": "array"
+        },
+        "tasks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tasks",
+          "type": "array"
+        },
+        "sample_kinds": {
+          "items": {
+            "enum": [
+              "surface",
+              "mesh",
+              "grid",
+              "point_cloud",
+              "particles",
+              "graph",
+              "tabular"
+            ],
+            "type": "string"
+          },
+          "title": "Sample Kinds",
+          "type": "array"
+        },
+        "input_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Format"
+        },
+        "framework": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Framework"
+        },
+        "checkpoint_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checkpoint Format"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "code_license": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code License"
+        },
+        "gated": {
+          "default": false,
+          "title": "Gated",
+          "type": "boolean"
+        },
+        "loader": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Loader"
+        },
+        "loader_recipe": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Loader Recipe"
+        },
+        "finetune": {
+          "default": "untested",
+          "enum": [
+            "verified",
+            "loadable",
+            "untested",
+            "unavailable"
+          ],
+          "title": "Finetune",
+          "type": "string"
+        }
+      },
+      "required": [
+        "architecture"
+      ],
+      "title": "ModelInfo",
+      "type": "object"
+    },
+    "Obtain": {
+      "additionalProperties": false,
+      "description": "How to get the data of an entry Frontier cannot simply download. Every field is\noptional: what is absent is derived from `access`, `sources` and `homepage`\n(:mod:`frontier_hub.obtain`).",
+      "properties": {
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "credential": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credential"
+        },
+        "steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/ObtainFile"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command"
+        },
+        "connector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connector"
+        },
+        "alternatives": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Alternatives",
+          "type": "array"
+        }
+      },
+      "title": "Obtain",
+      "type": "object"
+    },
+    "ObtainFile": {
+      "additionalProperties": false,
+      "description": "One file the user downloads by hand; `attach` checks what it finds against it.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bytes"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ObtainFile",
+      "type": "object"
+    },
+    "Physics": {
+      "additionalProperties": false,
+      "properties": {
+        "equations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Equations",
+          "type": "array"
+        },
+        "fidelity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fidelity"
+        },
+        "temporal": {
+          "anyOf": [
+            {
+              "enum": [
+                "steady",
+                "transient",
+                "static",
+                "mixed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temporal"
+        },
+        "dims": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dims"
+        }
+      },
+      "title": "Physics",
+      "type": "object"
+    },
+    "ReferenceResult": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Split"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "model",
+        "metric",
+        "value",
+        "source"
+      ],
+      "title": "ReferenceResult",
+      "type": "object"
+    },
+    "S3Source": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "s3",
+          "title": "Type",
+          "type": "string"
+        },
+        "bucket": {
+          "title": "Bucket",
+          "type": "string"
+        },
+        "prefix": {
+          "default": "",
+          "title": "Prefix",
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "endpoint_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint Url"
+        },
+        "anonymous": {
+          "default": true,
+          "title": "Anonymous",
+          "type": "boolean"
+        },
+        "requester_pays": {
+          "default": false,
+          "title": "Requester Pays",
+          "type": "boolean"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "bucket"
+      ],
+      "title": "S3Source",
+      "type": "object"
+    },
+    "Size": {
+      "additionalProperties": false,
+      "properties": {
+        "samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samples"
+        },
+        "bytes": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bytes"
+        },
+        "subsets": {
+          "items": {
+            "$ref": "#/$defs/Subset"
+          },
+          "title": "Subsets",
+          "type": "array"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "title": "Size",
+      "type": "object"
+    },
+    "Subset": {
+      "additionalProperties": false,
+      "description": "A named slice that can be pulled on its own (``pull --subset <id>``).",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "bytes": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bytes"
+        },
+        "samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samples"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        },
+        "max_files": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Files"
+        },
+        "head_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Head Bytes"
+        },
+        "convertible": {
+          "default": true,
+          "title": "Convertible",
+          "type": "boolean"
+        },
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "Subset",
+      "type": "object"
+    },
+    "Verified": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "subset": {
+          "title": "Subset",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        },
+        "raw_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Bytes"
+        },
+        "samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samples"
+        },
+        "sample_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Kind"
+        },
+        "temporal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temporal"
+        },
+        "dataset_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Bytes"
+        },
+        "pull_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pull Seconds"
+        },
+        "convert_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Convert Seconds"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command"
+        }
+      },
+      "required": [
+        "date",
+        "subset"
+      ],
+      "title": "Verified",
+      "type": "object"
+    },
+    "ZenodoSource": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "zenodo",
+          "title": "Type",
+          "type": "string"
+        },
+        "record": {
+          "title": "Record",
+          "type": "string"
+        },
+        "doi": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Doi"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "record"
+      ],
+      "title": "ZenodoSource",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "dataset",
+        "benchmark",
+        "collection",
+        "model"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "domain": {
+      "enum": [
+        "cfd",
+        "structural",
+        "thermal",
+        "multiphysics",
+        "materials",
+        "geophysical",
+        "other"
+      ],
+      "title": "Domain",
+      "type": "string"
+    },
+    "summary": {
+      "default": "",
+      "title": "Summary",
+      "type": "string"
+    },
+    "organization": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Organization"
+    },
+    "year": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Year"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "physics": {
+      "$ref": "#/$defs/Physics"
+    },
+    "geometry": {
+      "$ref": "#/$defs/Geometry"
+    },
+    "size": {
+      "$ref": "#/$defs/Size"
+    },
+    "compute": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Compute"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "license": {
+      "$ref": "#/$defs/License"
+    },
+    "citation": {
+      "$ref": "#/$defs/Citation"
+    },
+    "homepage": {
+      "title": "Homepage",
+      "type": "string"
+    },
+    "sources": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "api": "#/$defs/ApiSource",
+            "dataverse": "#/$defs/DataverseSource",
+            "gcs": "#/$defs/GcsSource",
+            "git": "#/$defs/GitSource",
+            "github-release": "#/$defs/GithubReleaseSource",
+            "globus": "#/$defs/GlobusSource",
+            "http": "#/$defs/HttpSource",
+            "huggingface": "#/$defs/HuggingFaceSource",
+            "kaggle": "#/$defs/KaggleSource",
+            "s3": "#/$defs/S3Source",
+            "zenodo": "#/$defs/ZenodoSource"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/HuggingFaceSource"
+          },
+          {
+            "$ref": "#/$defs/HttpSource"
+          },
+          {
+            "$ref": "#/$defs/ZenodoSource"
+          },
+          {
+            "$ref": "#/$defs/DataverseSource"
+          },
+          {
+            "$ref": "#/$defs/S3Source"
+          },
+          {
+            "$ref": "#/$defs/GcsSource"
+          },
+          {
+            "$ref": "#/$defs/GitSource"
+          },
+          {
+            "$ref": "#/$defs/GithubReleaseSource"
+          },
+          {
+            "$ref": "#/$defs/GlobusSource"
+          },
+          {
+            "$ref": "#/$defs/KaggleSource"
+          },
+          {
+            "$ref": "#/$defs/ApiSource"
+          }
+        ]
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "access": {
+      "default": "open",
+      "enum": [
+        "open",
+        "gated",
+        "request",
+        "manual",
+        "paid",
+        "generate",
+        "none"
+      ],
+      "title": "Access",
+      "type": "string"
+    },
+    "obtain": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Obtain"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "obtain_guide": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Obtain Guide"
+    },
+    "formats": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Formats",
+      "type": "array"
+    },
+    "converter": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Converter"
+    },
+    "conversion": {
+      "anyOf": [
+        {
+          "enum": [
+            "supported",
+            "listing-only"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Conversion"
+    },
+    "conversion_note": {
+      "default": "",
+      "title": "Conversion Note",
+      "type": "string"
+    },
+    "benchmarks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Benchmarks",
+      "type": "array"
+    },
+    "runnable_benchmarks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Runnable Benchmarks",
+      "type": "array"
+    },
+    "reference_results": {
+      "items": {
+        "$ref": "#/$defs/ReferenceResult"
+      },
+      "title": "Reference Results",
+      "type": "array"
+    },
+    "status": {
+      "default": "listed",
+      "enum": [
+        "verified",
+        "listed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "verified": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Verified"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "enterprise_notes": {
+      "default": "",
+      "title": "Enterprise Notes",
+      "type": "string"
+    },
+    "parent": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent"
+    },
+    "members": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Members",
+      "type": "array"
+    },
+    "datasets": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Datasets",
+      "type": "array"
+    },
+    "task": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Task"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/MetricDef"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "frontier_eval_spec": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Frontier Eval Spec"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "checked": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Checked"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "domain",
+    "license",
+    "homepage"
+  ],
+  "type": "object"
+}

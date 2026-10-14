@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/plugin-manifest.schema.json",
+  "title": "Frontier plugin manifest (plugin.toml)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "connector",
+        "exporter",
+        "importer"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "data_model_version": {
+      "type": "string"
+    },
+    "vendor": {
+      "type": "string",
+      "default": ""
+    },
+    "summary": {
+      "type": "string",
+      "default": ""
+    },
+    "formats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "maturity": {
+      "type": "string",
+      "default": "planned",
+      "enum": [
+        "exporter+reader",
+        "implemented-unverified-live",
+        "planned",
+        "verified-public-sample",
+        "verified-synthetic"
+      ]
+    },
+    "licence": {
+      "type": "string",
+      "default": "Apache-2.0"
+    },
+    "requires": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "suggests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "optional": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/OptionalDependency"
+      }
+    },
+    "connectors": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "importers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "exporter": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExporterSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "auth": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AuthDeclaration"
+      }
+    },
+    "homepage": {
+      "type": "string",
+      "default": ""
+    },
+    "description": {
+      "type": "string",
+      "default": ""
+    },
+    "author": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "category": {
+      "type": "string",
+      "default": "",
+      "enum": [
+        "cloud-service",
+        "exporter",
+        "file-format",
+        "importer",
+        "other",
+        "solver",
+        ""
+      ]
+    },
+    "icon": {
+      "type": "string",
+      "default": ""
+    },
+    "repository": {
+      "type": "string",
+      "default": ""
+    },
+    "readme": {
+      "type": "string",
+      "default": "README.md"
+    },
+    "updated": {
+      "type": "string",
+      "default": ""
+    },
+    "schema": {
+      "type": "integer",
+      "default": 1
+    },
+    "license": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "version",
+    "data_model_version"
+  ],
+  "$defs": {
+    "OptionalDependency": {
+      "type": "object",
+      "properties": {
+        "package": {
+          "type": "string"
+        },
+        "licence": {
+          "type": "string",
+          "default": ""
+        },
+        "purpose": {
+          "type": "string",
+          "default": ""
+        },
+        "module": {
+          "type": "string",
+          "default": ""
+        },
+        "flag": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "package"
+      ]
+    },
+    "ExporterSpec": {
+      "type": "object",
+      "properties": {
+        "vendor": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string",
+          "default": ""
+        },
+        "files": {
+          "type": "string",
+          "default": "files"
+        },
+        "usage": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "vendor"
+      ]
+    },
+    "AuthDeclaration": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "default": "token",
+          "enum": [
+            "api_key",
+            "basic",
+            "file",
+            "none",
+            "oauth_device",
+            "oauth_pkce",
+            "token"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AuthField"
+          }
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "help_url": {
+          "type": "string",
+          "default": ""
+        },
+        "test": {
+          "type": "string",
+          "default": ""
+        },
+        "scopes_hint": {
+          "type": "string",
+          "default": ""
+        },
+        "oauth": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title"
+      ]
+    },
+    "AuthField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "default": ""
+        },
+        "secret": {
+          "type": "boolean",
+          "default": true
+        },
+        "required": {
+          "type": "boolean",
+          "default": true
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    }
+  },
+  "description": "plugin.toml shipped by every Frontier plugin distribution."
+}

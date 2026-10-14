@@ -1,0 +1,426 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/runspec.schema.json",
+  "title": "Frontier RunSpec (frontier.run/v1)",
+  "x-frontier-hand-maintained": true,
+  "description": "A Frontier RunSpec (`frontier run -f runspec.yaml`): what to run, on what data, with which resources.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task"
+  ],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "frontier.run/v1",
+      "default": "frontier.run/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Run",
+      "default": "Run"
+    },
+    "name": {
+      "type": "string"
+    },
+    "task": {
+      "type": "string",
+      "enum": [
+        "train",
+        "ingest",
+        "eval",
+        "predict",
+        "pipeline",
+        "hub-pull"
+      ]
+    },
+    "config": {
+      "type": "string",
+      "description": "Path to a training / eval config"
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_.]*="
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/StepSpec"
+      }
+    },
+    "datasets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DatasetRef"
+      }
+    },
+    "resources": {
+      "$ref": "#/$defs/RunResources"
+    },
+    "compute": {
+      "$ref": "#/$defs/ComputeSpec"
+    },
+    "image": {
+      "type": "string"
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "checkpoint": {
+      "$ref": "#/$defs/CheckpointPolicy"
+    },
+    "retries": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "smoke": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "$defs": {
+    "Task": {
+      "type": "string",
+      "enum": [
+        "train",
+        "ingest",
+        "eval",
+        "predict",
+        "pipeline",
+        "hub-pull"
+      ]
+    },
+    "StepSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task"
+      ],
+      "properties": {
+        "task": {
+          "type": "string",
+          "enum": [
+            "train",
+            "ingest",
+            "eval",
+            "predict",
+            "pipeline",
+            "hub-pull"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "config": {
+          "type": "string"
+        },
+        "overrides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "DatasetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "existing",
+                "pipeline",
+                "hub",
+                "ingest",
+                "upload"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "pipeline"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "hub"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "subset": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "ingest"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "source",
+                  "runs"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "runs": {
+                    "type": "string"
+                  },
+                  "lod": {
+                    "type": "string"
+                  },
+                  "split": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DatasetSource": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "existing",
+            "pipeline",
+            "hub",
+            "ingest",
+            "upload"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "pipeline"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "file"
+            ],
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "hub"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "subset": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ingest"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source",
+              "runs"
+            ],
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "runs": {
+                "type": "string"
+              },
+              "lod": {
+                "type": "string"
+              },
+              "split": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RunResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpus": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        },
+        "gpu_type": {
+          "type": "string",
+          "default": "any"
+        },
+        "gpu_mem_gb": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "cpus": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8
+        },
+        "memory_gb": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 32
+        },
+        "disk_gb": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20
+        },
+        "time_limit": {
+          "type": "string",
+          "description": "90m, 2h, 01:30:00, 1-00:00:00 or seconds",
+          "pattern": "^(\\d+[smhd]?|\\d{1,2}:\\d{2}(:\\d{2})?|\\d+-\\d{2}:\\d{2}:\\d{2})$"
+        }
+      }
+    },
+    "ComputeSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pool": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "training",
+            "inference",
+            "rendering",
+            "prep",
+            "any"
+          ]
+        },
+        "nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclusive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "CheckpointPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resume": {
+          "type": "boolean",
+          "default": true
+        },
+        "sync_every_s": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 120
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+[project]
+name = "frontier-prep"
+version = "0.9.0"
+description = "DimensionLab Frontier – deterministic, auditable data-preparation operations for physics datasets"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "Apache-2.0"
+dependencies = [
+  "frontier-data>=0.9.0,<0.10.0",
+  "numpy>=1.26",
+  "scipy>=1.13",
+  "pydantic>=2.10",
+  "zarr>=3.0",
+  "pint>=0.24",
+  "typer>=0.15",
+  "rich>=13.0",
+]
+
+[project.scripts]
+frontier-prep = "frontier_prep.cli:main"
+
+# First-party operations. Third-party packages add their own ops under the same group:
+# <op id> = "<module>:<Op class or instance>"
+[project.entry-points."frontier.ops"]
+builtin = "frontier_prep.ops:BUILTIN"
+
+[build-system]
+requires = ["uv_build>=0.8.9,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+frontier-data = { workspace = true }
+
+[tool.pytest.ini_options]
+addopts = """
+ --junitxml='../../reports/packages/frontier-prep/unittests/junit.xml'
+"""

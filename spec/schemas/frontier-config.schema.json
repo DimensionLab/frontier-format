@@ -1,0 +1,1687 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/frontier-config.schema.json",
+  "title": "Frontier configuration file",
+  "additionalProperties": false,
+  "properties": {
+    "auth": {
+      "additionalProperties": false,
+      "description": "Who may call the control plane: single-user, API tokens or OIDC sign-in; sessions and the audit log.",
+      "properties": {
+        "allow_insecure": {
+          "default": false,
+          "description": "Let the server start with `auth.mode = \"none\"` on an address other machines can reach. Everyone who can connect is then an administrator.",
+          "title": "Allow single-user mode on the network",
+          "type": "boolean"
+        },
+        "allow_plain_http": {
+          "default": false,
+          "description": "Let the server listen on an address other machines can reach although `auth.public_url` is not an https URL. Set it when TLS ends at a reverse proxy you have not described in `auth.public_url`, or on a network you trust with tokens in clear.",
+          "title": "Allow a network address without TLS",
+          "type": "boolean"
+        },
+        "allow_self_approval": {
+          "default": false,
+          "description": "Let the person who submitted a data-preparation run or started an agent session also approve it. Off: an approval is a second person's decision (four-eyes); on, for teams with a single reviewer.",
+          "title": "Allow approving one's own plans",
+          "type": "boolean"
+        },
+        "audit_retention_days": {
+          "default": 0,
+          "description": "Audit records older than this are removed at start-up and daily; the chain stays verifiable from a recorded anchor. 0 keeps everything.",
+          "minimum": 0.0,
+          "title": "Audit log retention (days)",
+          "type": "integer"
+        },
+        "local_token": {
+          "default": true,
+          "description": "With `auth.mode = \"none\"`, every request that changes something or touches credentials must carry the token the server writes at start-up to `<data dir>/local-token` and `~/.frontier/servers/<port>.token` (owner-readable only). The CLI, the SDK and workers on this machine read it by themselves; the browser app obtains it from `POST /api/v1/auth/local-session`. Turning it off lets every local process and every allowed web origin act as administrator.",
+          "title": "Require the local token in single-user mode",
+          "type": "boolean"
+        },
+        "mode": {
+          "default": "none",
+          "description": "`none`: single-user, every request acts as the local administrator (only on a loopback address). `token`: API tokens. `oidc`: people sign in through an OpenID Connect provider; the CLI, workers and CI use API tokens.",
+          "enum": [
+            "none",
+            "token",
+            "oidc"
+          ],
+          "title": "Authentication mode",
+          "type": "string"
+        },
+        "oidc": {
+          "additionalProperties": false,
+          "properties": {
+            "client_id": {
+              "default": "",
+              "description": "Client id registered for Frontier at the provider. The client secret, if the provider issues one, is the credential `frontier-oidc` (or `FRONTIER_OIDC_CLIENT_SECRET`), never a setting.",
+              "title": "OIDC client id",
+              "type": "string"
+            },
+            "default_role": {
+              "default": "",
+              "description": "Organisation role of a user none of whose groups is mapped; empty refuses the sign-in.",
+              "enum": [
+                "",
+                "viewer",
+                "member",
+                "maintainer",
+                "admin",
+                "auditor"
+              ],
+              "title": "Role without a mapped group",
+              "type": "string"
+            },
+            "groups_claim": {
+              "default": "groups",
+              "description": "Claim listing the user's groups (an array or a space-separated string; dots descend, as in `realm_access.roles`).",
+              "title": "Groups claim",
+              "type": "string"
+            },
+            "issuer": {
+              "default": "",
+              "description": "Issuer URL of the identity provider; `<issuer>/.well-known/openid-configuration` must exist.",
+              "title": "OIDC issuer",
+              "type": "string"
+            },
+            "role_mapping": {
+              "default": {},
+              "description": "Group name to `admin`, `maintainer`, `member`, `viewer` or `auditor` (organisation role), or `project:<project name>:<role>`. The highest matching role applies and is re-evaluated at every sign-in.",
+              "title": "Group to role mapping",
+              "type": "object"
+            },
+            "scopes": {
+              "default": [
+                "openid",
+                "profile",
+                "email"
+              ],
+              "description": "Scopes requested at sign-in; add the one that makes the provider include groups (often `groups`).",
+              "items": {
+                "type": "string"
+              },
+              "title": "OIDC scopes",
+              "type": "array"
+            },
+            "username_claim": {
+              "default": "preferred_username",
+              "description": "Claim used as the Frontier login name; falls back to `email`, then `sub`.",
+              "title": "Login name claim",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "public_url": {
+          "default": "",
+          "description": "The address browsers reach the server at (for example https://frontier.example.com); the OIDC redirect URI is `<public_url>/api/v1/auth/oidc/callback`. Empty: derived from the listen address.",
+          "title": "Public URL of the control plane",
+          "type": "string"
+        },
+        "session_ttl_hours": {
+          "default": 12,
+          "description": "How long a browser session stays valid after sign-in.",
+          "maximum": 720.0,
+          "minimum": 1.0,
+          "title": "Session lifetime (hours)",
+          "type": "integer"
+        },
+        "token_max_ttl_days": {
+          "default": 0,
+          "description": "Upper bound for the lifetime of tokens people create for themselves; 0 means no bound. Service-account tokens issued by an administrator are not bound by it.",
+          "maximum": 3650.0,
+          "minimum": 0.0,
+          "title": "Longest API token lifetime (days)",
+          "type": "integer"
+        },
+        "token_ttl_days": {
+          "default": 90,
+          "description": "Lifetime of a new API token when none is asked for; 0 means it does not expire.",
+          "maximum": 3650.0,
+          "minimum": 0.0,
+          "title": "Default API token lifetime (days)",
+          "type": "integer"
+        },
+        "trust_forwarded_for": {
+          "default": false,
+          "description": "Record the client address a reverse proxy reports instead of the proxy's own. Enable only behind a proxy that overwrites the header.",
+          "title": "Trust X-Forwarded-For",
+          "type": "boolean"
+        }
+      },
+      "title": "Authentication",
+      "type": "object"
+    },
+    "client": {
+      "additionalProperties": false,
+      "description": "How the CLI, the TUI, the SDK and the trainer reach the control plane.",
+      "properties": {
+        "offline_dir": {
+          "default": ".frontier",
+          "description": "Where the SDK writes run records when no server is reachable. Relative paths are relative to the working directory.",
+          "title": "Offline run directory",
+          "type": "string"
+        },
+        "request_timeout_secs": {
+          "default": 30,
+          "description": "Timeout of one request to the control plane.",
+          "maximum": 3600.0,
+          "minimum": 1.0,
+          "title": "Request timeout (seconds)",
+          "type": "integer"
+        },
+        "server_url": {
+          "default": "",
+          "description": "Base URL of the Frontier server (for example https://frontier.example.com). Empty means offline: runs are recorded locally and synced later.",
+          "title": "Control plane URL",
+          "type": "string"
+        }
+      },
+      "title": "Connection",
+      "type": "object"
+    },
+    "compute": {
+      "additionalProperties": false,
+      "description": "Defaults for `frontier run`, `frontier sweep` and `frontier cloud`.",
+      "properties": {
+        "allocation_policy": {
+          "default": "topology",
+          "description": "How devices are picked for a job inside a pool: `topology` (same node first, NVLink islands for multi-GPU jobs, then least loaded), `least_loaded` (lowest utilisation and memory use first) or `memory_fit` (the smallest device that fits the request).",
+          "enum": [
+            "topology",
+            "least_loaded",
+            "memory_fit"
+          ],
+          "title": "Allocation policy",
+          "type": "string"
+        },
+        "default_gpu": {
+          "default": "NVIDIA GeForce RTX 4090",
+          "description": "GPU type `frontier cloud up` rents when --gpu is not given.",
+          "title": "Default GPU type",
+          "type": "string"
+        },
+        "default_provider": {
+          "default": "runpod",
+          "description": "Provider used by `frontier cloud up` and `frontier cloud offers` when --provider is not given.",
+          "enum": [
+            "runpod",
+            "anyscale",
+            "local",
+            "slurm"
+          ],
+          "title": "Default cloud provider",
+          "type": "string"
+        },
+        "default_target": {
+          "default": "local",
+          "description": "Where `frontier run` sends a run when --on is not given.",
+          "enum": [
+            "local",
+            "ssh",
+            "slurm",
+            "k8s",
+            "runpod",
+            "anyscale"
+          ],
+          "title": "Default target",
+          "type": "string"
+        },
+        "default_tier": {
+          "default": "secure",
+          "description": "RunPod capacity tier: `secure` (datacentre) or `community` (cheaper, interruptible hosts).",
+          "enum": [
+            "secure",
+            "community"
+          ],
+          "title": "Default cloud tier",
+          "type": "string"
+        },
+        "image": {
+          "default": "",
+          "description": "Container image a run uses on cloud, SLURM and Kubernetes targets. Empty uses `<compute.registry>/frontier-trainer:<version>`.",
+          "title": "Training image",
+          "type": "string"
+        },
+        "lease_secs": {
+          "default": 90,
+          "description": "An allocation is released when no heartbeat from its worker renews it for this long, and its job is marked failed (`worker lost`).",
+          "maximum": 3600.0,
+          "minimum": 15.0,
+          "title": "Allocation lease (seconds)",
+          "type": "integer"
+        },
+        "local_executor": {
+          "default": true,
+          "description": "Start a `frontier-worker` for the `local` backend next to the control plane, so a single-machine install runs jobs without starting a worker by hand. Turn it off on shared servers where workers run on other machines.",
+          "title": "Built-in local worker",
+          "type": "boolean"
+        },
+        "local_worker_jobs": {
+          "default": 2,
+          "description": "How many jobs the built-in local worker runs at the same time. Two lets an inference predict while a model trains on the same machine; 1 runs them one after the other.",
+          "minimum": 1.0,
+          "title": "Jobs of the built-in worker",
+          "type": "integer"
+        },
+        "max_cost_per_run": {
+          "default": 0.0,
+          "description": "A cloud run is stopped when its accumulated cost reaches this amount, unless --max-cost says otherwise. 0 means no ceiling of your own; `policy.max_cost_per_run` caps it organisation-wide.",
+          "minimum": 0.0,
+          "title": "Cost ceiling per run (USD)",
+          "type": "number"
+        },
+        "pools": {
+          "default": {},
+          "description": "Named sets of devices with a role mask, `[compute.pools.<name>]` with `nodes`, `gpus`, `roles` (training, inference, rendering, prep, any), `quota` (`{gpus, jobs}`), `priority`, `shared` and `description`. Every device not named by a pool belongs to the built-in `auto` pool with all roles.",
+          "title": "Compute pools",
+          "type": "object"
+        },
+        "python": {
+          "default": "",
+          "description": "Python interpreter (or command prefix) that has the Frontier Python packages. Empty uses `.venv` in the project directory, then `uv run python`.",
+          "title": "Python interpreter",
+          "type": "string"
+        },
+        "registry": {
+          "default": "registry.dimensionlab.org",
+          "description": "Registry and path the Frontier images are pulled from. The training image is `<registry>/frontier-trainer:<version>` and the server and worker image `<registry>/frontier:<version>`.",
+          "title": "Container registry",
+          "type": "string"
+        },
+        "rendering_pool": {
+          "default": "",
+          "description": "Pool the control plane's render workers (thumbnails, render-to-image, frame preparation) take their device from. Empty = any pool that serves the `rendering` role, `auto` included.",
+          "title": "Rendering pool",
+          "type": "string"
+        },
+        "worker_image": {
+          "default": "",
+          "description": "Container image `frontier cloud up` starts on a rented instance. Empty uses `<compute.registry>/frontier:<version>`.",
+          "title": "Worker image",
+          "type": "string"
+        }
+      },
+      "title": "Compute",
+      "type": "object"
+    },
+    "editor": {
+      "additionalProperties": false,
+      "description": "How the editor in board nodes and on pages looks and types.",
+      "properties": {
+        "auto_close": {
+          "default": true,
+          "description": "Typing an opening bracket or quote inserts its pair.",
+          "title": "Close brackets and quotes",
+          "type": "boolean"
+        },
+        "current_line": {
+          "default": true,
+          "description": "Tint the row the caret is on.",
+          "title": "Highlight the current line",
+          "type": "boolean"
+        },
+        "cursor_blink": {
+          "default": true,
+          "description": "Off: the caret is always shown.",
+          "title": "Blinking cursor",
+          "type": "boolean"
+        },
+        "cursor_style": {
+          "default": "bar",
+          "description": "Shape of the caret.",
+          "enum": [
+            "bar",
+            "block",
+            "underline"
+          ],
+          "title": "Cursor",
+          "type": "string"
+        },
+        "font_size": {
+          "default": 13,
+          "description": "Size of the editor's text at 100% zoom.",
+          "maximum": 28.0,
+          "minimum": 9.0,
+          "title": "Font size (px)",
+          "type": "integer"
+        },
+        "format_on_save": {
+          "default": false,
+          "description": "Saving a JSON, YAML or TOML file formats it first. Comments and values are kept; a file with a syntax error is saved as it is.",
+          "title": "Format on save",
+          "type": "boolean"
+        },
+        "insert_spaces": {
+          "default": true,
+          "description": "Tab inserts spaces up to the next tab stop. Off: a tab character.",
+          "title": "Indent with spaces",
+          "type": "boolean"
+        },
+        "line_height": {
+          "default": 1.45,
+          "description": "Height of a row as a multiple of the font size.",
+          "maximum": 2.2,
+          "minimum": 1.1,
+          "title": "Line height",
+          "type": "number"
+        },
+        "line_numbers": {
+          "default": true,
+          "description": "Show the number of each line beside it.",
+          "title": "Line numbers",
+          "type": "boolean"
+        },
+        "minimap": {
+          "default": true,
+          "description": "An outline of the whole file beside the scrollbar, when the editor is wide enough for it.",
+          "title": "Minimap",
+          "type": "boolean"
+        },
+        "syntax": {
+          "default": "default",
+          "description": "`default`: the app's palette. `vivid`: stronger colours. `quiet`: keys and strings only; everything else in the text colour.",
+          "enum": [
+            "default",
+            "vivid",
+            "quiet"
+          ],
+          "title": "Syntax colours",
+          "type": "string"
+        },
+        "tab_size": {
+          "default": 2,
+          "description": "Cells a tab stop spans, and spaces one press of Tab inserts.",
+          "maximum": 8.0,
+          "minimum": 1.0,
+          "title": "Tab size",
+          "type": "integer"
+        },
+        "theme": {
+          "default": "follow",
+          "description": "`follow`: light or dark with the app. `light` or `dark`: always that one.",
+          "enum": [
+            "follow",
+            "light",
+            "dark"
+          ],
+          "title": "Editor theme",
+          "type": "string"
+        },
+        "wrap": {
+          "default": true,
+          "description": "Long lines continue on the next row instead of scrolling sideways. A node's own Wrap lines setting wins.",
+          "title": "Wrap lines",
+          "type": "boolean"
+        }
+      },
+      "title": "Editor",
+      "type": "object"
+    },
+    "hub": {
+      "additionalProperties": false,
+      "description": "The catalogue of public datasets and how much may be downloaded unasked.",
+      "properties": {
+        "catalog_path": {
+          "default": "",
+          "description": "Replaces the built-in hub catalogue (a catalog.json exported by `frontier hub export`). Empty uses the built-in one.",
+          "title": "Catalogue file",
+          "type": "string"
+        },
+        "extra_catalogs": {
+          "default": [],
+          "description": "Directories or files with more catalogue entries (an organisation's internal datasets).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Additional catalogues",
+          "type": "array"
+        },
+        "huggingface_endpoint": {
+          "default": "",
+          "description": "Base URL of a Hugging Face mirror (HF_ENDPOINT). Empty uses https://huggingface.co.",
+          "title": "Hugging Face endpoint",
+          "type": "string"
+        },
+        "max_bytes": {
+          "default": 2147483648,
+          "description": "Largest pull that starts without --yes or an explicit --max-bytes.",
+          "minimum": 1.0,
+          "title": "Download size limit",
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "mirrors": {
+          "default": [],
+          "description": "Where your organisation keeps raw files of hub entries: items `<entry id or pattern>=<location>`, first match wins, for example `shift-*=s3://company-datasets/restricted` and `*=/mnt/datasets/hub`. A location is a directory or an object-store prefix (s3://, r2://, gs://, az://). Credentials for it come from the secret store (providers `s3`, `gcs`, `azure`), never from the location.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Organisation mirrors",
+          "type": "array"
+        }
+      },
+      "title": "Datasets hub",
+      "type": "object"
+    },
+    "limits": {
+      "additionalProperties": false,
+      "description": "Size limits enforced by the control plane.",
+      "properties": {
+        "failed_auth_per_minute": {
+          "default": 30,
+          "description": "After this many rejected tokens, sessions or sign-ins from one address within a minute, further rejected attempts from it are answered 429 and no longer written to the audit log until the minute has passed. Valid credentials keep working. 0 turns the limit off.",
+          "minimum": 0.0,
+          "title": "Rejected sign-ins per minute and address",
+          "type": "integer"
+        },
+        "max_array_bytes": {
+          "default": 4294967296,
+          "description": "Upper bound on the memory one read of a dataset or prediction array may need. A store whose metadata declares more is refused instead of loaded, so a hostile or corrupt upload cannot exhaust the server's memory.",
+          "minimum": 1048576.0,
+          "title": "Largest array read at once",
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "max_artifact_bytes": {
+          "default": 53687091200,
+          "description": "Upper bound on one uploaded run artifact (checkpoints, prediction stores, model packages). A larger upload is cut off and removed.",
+          "minimum": 1024.0,
+          "title": "Largest artifact upload",
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "max_concurrent_requests": {
+          "default": 512,
+          "description": "Requests the control plane works on at once, open event streams included; further ones wait.",
+          "maximum": 65536.0,
+          "minimum": 8.0,
+          "title": "Concurrent requests",
+          "type": "integer"
+        },
+        "max_event_streams_per_client": {
+          "default": 32,
+          "description": "Live event streams (run events, agent sessions, model events) one caller may hold open at a time; further ones are refused with 429. 0 means no bound.",
+          "minimum": 0.0,
+          "title": "Event streams per client",
+          "type": "integer"
+        },
+        "max_request_bytes": {
+          "default": 268435456,
+          "description": "Largest JSON request (metric batches, job logs) the control plane accepts. Artifact uploads are streamed and not limited by this.",
+          "minimum": 1024.0,
+          "title": "Request size limit",
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "max_run_artifact_bytes": {
+          "default": 536870912000,
+          "description": "Upper bound on the total size of one run's artifacts; an upload that would exceed it is refused. 0 means no bound.",
+          "minimum": 0.0,
+          "title": "Artifact space per run",
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "min_free_disk_bytes": {
+          "default": 1073741824,
+          "description": "Uploads are refused while the data directory's file system has less free space than this, so the database and job logs can still be written. 0 turns the check off.",
+          "minimum": 0.0,
+          "title": "Free disk space to keep",
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "request_timeout_secs": {
+          "default": 300,
+          "description": "A request whose handler has not answered after this long is ended with 504. Event streams and downloads are not cut (they answer at once and then stream); artifact uploads are exempt. 0 means no timeout.",
+          "minimum": 0.0,
+          "title": "Request timeout (seconds)",
+          "type": "integer"
+        }
+      },
+      "title": "Limits",
+      "type": "object"
+    },
+    "lock": {
+      "description": "System file only: keys lower-trust layers may not override. `\"section.key\" = \"reason\"`, `\"section.*\"` for a whole section.",
+      "title": "Locks",
+      "type": "object"
+    },
+    "logging": {
+      "additionalProperties": false,
+      "description": "Log verbosity and format. Frontier sends no usage telemetry.",
+      "properties": {
+        "format": {
+          "default": "text",
+          "description": "`json` writes one JSON object per line for log collectors.",
+          "enum": [
+            "text",
+            "json"
+          ],
+          "title": "Log format",
+          "type": "string"
+        },
+        "level": {
+          "default": "info",
+          "description": "Verbosity of every Frontier process. RUST_LOG, when set, still wins for the Rust binaries.",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "title": "Log level",
+          "type": "string"
+        }
+      },
+      "title": "Logging and telemetry",
+      "type": "object"
+    },
+    "network": {
+      "additionalProperties": false,
+      "description": "Proxy, certificate authority and offline mode for every outbound connection.",
+      "properties": {
+        "ca_bundle": {
+          "default": "",
+          "description": "PEM file with the certificate authorities to trust, for TLS-inspecting proxies and internal services (exported as SSL_CERT_FILE, REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE).",
+          "title": "CA bundle",
+          "type": "string"
+        },
+        "http_proxy": {
+          "default": "",
+          "description": "Proxy for outbound HTTP (exported as HTTP_PROXY).",
+          "title": "HTTP proxy",
+          "type": "string"
+        },
+        "https_proxy": {
+          "default": "",
+          "description": "Proxy for outbound HTTPS (exported to child processes as HTTPS_PROXY).",
+          "title": "HTTPS proxy",
+          "type": "string"
+        },
+        "no_proxy": {
+          "default": [],
+          "description": "Hosts and domains reached directly (exported as NO_PROXY).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Proxy exceptions",
+          "type": "array"
+        },
+        "offline": {
+          "default": false,
+          "description": "Never open a connection to the public internet: hub pulls, plugin index lookups, price lists and update checks fail fast with an explanation instead of timing out.",
+          "title": "Offline mode",
+          "type": "boolean"
+        },
+        "offline_allow_hosts": {
+          "default": [],
+          "description": "Host names inside your network that stay reachable with `network.offline` on, besides this machine, private address ranges and the control plane (`client.server_url`): a secret manager, an identity provider, an internal package index.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Hosts reachable in offline mode",
+          "type": "array"
+        }
+      },
+      "title": "Network",
+      "type": "object"
+    },
+    "notifications": {
+      "additionalProperties": false,
+      "description": "Which events the app tells you about, and where and how long its toasts show.",
+      "properties": {
+        "do_not_disturb": {
+          "default": false,
+          "description": "Show no toasts; everything still arrives in the notification centre.",
+          "title": "Do not disturb",
+          "type": "boolean"
+        },
+        "duration_secs": {
+          "default": 6,
+          "description": "How long an information or success toast stays. Warnings and errors stay until dismissed.",
+          "maximum": 60.0,
+          "minimum": 2.0,
+          "title": "Toast duration (s)",
+          "type": "integer"
+        },
+        "max_visible": {
+          "default": 4,
+          "description": "More than this collapse into a count that opens the notification centre.",
+          "maximum": 8.0,
+          "minimum": 1.0,
+          "title": "Toasts shown at once",
+          "type": "integer"
+        },
+        "os": {
+          "default": false,
+          "description": "Also show a notification of the operating system (the browser asks for permission) while the window is not in front.",
+          "title": "System notifications",
+          "type": "boolean"
+        },
+        "position": {
+          "default": "top-right",
+          "description": "Corner of the window where toasts appear. They never cover the top bar or a board's toolbar.",
+          "enum": [
+            "top-right",
+            "top-left",
+            "bottom-right",
+            "bottom-left",
+            "top-centre"
+          ],
+          "title": "Toast position",
+          "type": "string"
+        },
+        "scope": {
+          "default": "projects",
+          "description": "`mine`: only what you started. `projects`: everything in the projects you may read.",
+          "enum": [
+            "mine",
+            "projects"
+          ],
+          "title": "Whose events",
+          "type": "string"
+        },
+        "sound": {
+          "default": false,
+          "description": "Play a short sound with a warning or an error toast.",
+          "title": "Sound",
+          "type": "boolean"
+        },
+        "types": {
+          "additionalProperties": false,
+          "properties": {
+            "approvals": {
+              "default": "toast",
+              "description": "A data-preparation step or an AI agent's plan waits for a decision, or was approved or refused. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Approvals",
+              "type": "string"
+            },
+            "compute": {
+              "default": "toast",
+              "description": "A worker went offline, a pool has no capacity, or a cloud pod is about to be released. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Compute",
+              "type": "string"
+            },
+            "connection": {
+              "default": "toast",
+              "description": "The app lost its server or reached it again. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Connection",
+              "type": "string"
+            },
+            "cost": {
+              "default": "toast",
+              "description": "Spending reached a threshold. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Cost",
+              "type": "string"
+            },
+            "credentials": {
+              "default": "toast",
+              "description": "A credential expires soon or failed its test. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Credentials",
+              "type": "string"
+            },
+            "datasets": {
+              "default": "toast",
+              "description": "A dataset import or a data-preparation step finished. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Datasets",
+              "type": "string"
+            },
+            "evaluations": {
+              "default": "toast",
+              "description": "An evaluation finished, a report is ready, or a quality gate refused a model. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Evaluations and reports",
+              "type": "string"
+            },
+            "jobs": {
+              "default": "toast",
+              "description": "A job failed, or has been queued for a long time. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Jobs",
+              "type": "string"
+            },
+            "models": {
+              "default": "toast",
+              "description": "A model version changed stage or was deployed. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Models",
+              "type": "string"
+            },
+            "runs": {
+              "default": "toast",
+              "description": "A pipeline run or a training run finished or failed. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Runs",
+              "type": "string"
+            },
+            "steps": {
+              "default": "toast",
+              "description": "A step of a pipeline run failed. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Pipeline steps",
+              "type": "string"
+            },
+            "updates": {
+              "default": "toast",
+              "description": "A newer version of Frontier is available. `toast`: a toast and an entry in the notification centre. `centre`: the entry only. `off`: nothing.",
+              "enum": [
+                "toast",
+                "centre",
+                "off"
+              ],
+              "title": "Updates",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "title": "Notifications",
+      "type": "object"
+    },
+    "plugins": {
+      "additionalProperties": false,
+      "description": "Where connector plugins are installed from (an internal index or a wheel directory when air-gapped).",
+      "properties": {
+        "index_url": {
+          "default": "",
+          "description": "Python package index plugins are installed from. Empty uses the installer's default (PyPI). Set it to an internal mirror in restricted networks.",
+          "title": "Package index",
+          "type": "string"
+        },
+        "installer": {
+          "default": "auto",
+          "description": "Tool that installs plugin wheels: uv when available, else pip.",
+          "enum": [
+            "auto",
+            "uv",
+            "pip"
+          ],
+          "title": "Installer",
+          "type": "string"
+        },
+        "wheel_dir": {
+          "default": "",
+          "description": "Directory of plugin wheels to install from instead of an index (air-gapped installations). When set, no index is contacted.",
+          "title": "Wheel directory",
+          "type": "string"
+        }
+      },
+      "title": "Plugins",
+      "type": "object"
+    },
+    "policy": {
+      "additionalProperties": false,
+      "description": "Organisation policy. Meant to be set and locked in the system file by an administrator.",
+      "properties": {
+        "ai": {
+          "additionalProperties": false,
+          "properties": {
+            "allowed_providers": {
+              "default": [
+                "local"
+              ],
+              "description": "Provider ids an agent session or a judge may use: `local` (covers `ollama`, `vllm`, `llamacpp`, `rules`, `nli`), `anthropic`, `openai`, `typesafe`, or `any`.",
+              "items": {
+                "enum": [
+                  "local",
+                  "ollama",
+                  "vllm",
+                  "llamacpp",
+                  "rules",
+                  "nli",
+                  "anthropic",
+                  "openai",
+                  "typesafe",
+                  "any"
+                ],
+                "type": "string"
+              },
+              "title": "Allowed model providers",
+              "type": "array"
+            },
+            "autonomous_op_classes": {
+              "default": [],
+              "description": "Operation classes (`prep.fields`, `prep.samples.drop`, `all`) an agent may `run` without a person's approval. Empty means every run needs an approval.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Op classes an agent may run unattended",
+              "type": "array"
+            },
+            "data_leaves_site": {
+              "default": false,
+              "description": "When off, every hosted model provider (anthropic, openai, typesafe) is refused whatever `allowed_providers` says: plan and preview summaries would be sent off-site.",
+              "title": "Allow data to leave the site",
+              "type": "boolean"
+            },
+            "hosted_model": {
+              "default": "",
+              "description": "Model id at the hosted provider for `--hosted` sessions.",
+              "title": "Hosted model",
+              "type": "string"
+            },
+            "hosted_provider": {
+              "default": "anthropic",
+              "description": "The hosted provider for `--hosted` sessions (needs `data_leaves_site` and a credential: `frontier auth login anthropic`).",
+              "enum": [
+                "anthropic",
+                "openai",
+                "typesafe"
+              ],
+              "title": "Hosted provider",
+              "type": "string"
+            },
+            "judge_backend": {
+              "default": "auto",
+              "description": "`auto` picks TypeSafe when allowed and configured, else the local model when its endpoint answers, else rules; or name one of `local`, `rules`, `nli`, `typesafe`.",
+              "enum": [
+                "auto",
+                "local",
+                "rules",
+                "nli",
+                "typesafe"
+              ],
+              "title": "Judge backend",
+              "type": "string"
+            },
+            "local_endpoint": {
+              "default": "http://localhost:11434",
+              "description": "The local model server (Ollama native API; an endpoint ending in `/v1` is treated as OpenAI-compatible: vLLM, llama.cpp server).",
+              "title": "Local model endpoint",
+              "type": "string"
+            },
+            "local_endpoints": {
+              "default": [],
+              "description": "Host names (or `host:port`) besides this machine that the provider `local` may reach: a model server inside the site's network. Anything else is treated as data leaving the site. Read from the system file and the control plane only.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Hosts that count as local model servers",
+              "type": "array"
+            },
+            "local_model": {
+              "default": "",
+              "description": "Model tag on the local endpoint used for judgments and local agent sessions.",
+              "title": "Local model",
+              "type": "string"
+            },
+            "max_tool_calls": {
+              "default": 40,
+              "description": "Budget of tool calls one agent session may make.",
+              "maximum": 10000.0,
+              "minimum": 1.0,
+              "title": "Tool calls per session",
+              "type": "integer"
+            },
+            "session_dir": {
+              "default": "~/.frontier/agent-sessions",
+              "description": "Where session records (`<id>.jsonl`: every tool call, preview, judgment and approval) are written.",
+              "title": "Session record directory",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "allow_cloud_targets": {
+          "default": [
+            "local",
+            "ssh",
+            "slurm",
+            "k8s",
+            "runpod",
+            "anyscale"
+          ],
+          "description": "Targets runs may be sent to. Remove `runpod` and `anyscale` to keep every run on your own machines.",
+          "items": {
+            "enum": [
+              "local",
+              "ssh",
+              "slurm",
+              "k8s",
+              "runpod",
+              "anyscale"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed compute targets",
+          "type": "array"
+        },
+        "allow_plugin_changes": {
+          "default": true,
+          "description": "When off, the set of plugins is frozen: nobody can install, uninstall, enable or disable a plugin or deploy an exporter from the CLI or the app. Administrators change plugins by changing the installation.",
+          "title": "Allow plugin changes",
+          "type": "boolean"
+        },
+        "allow_public_hub": {
+          "default": true,
+          "description": "When off, `frontier hub pull` and the app refuse to download from public hosts; only catalogue entries served from `hub.extra_catalogs` on local paths remain available.",
+          "title": "Allow public dataset downloads",
+          "type": "boolean"
+        },
+        "allowed_dataset_licences": {
+          "default": [
+            "any"
+          ],
+          "description": "Which hub datasets may be pulled: `any`, `commercial` (licences that permit commercial use), or SPDX identifiers (for example CC-BY-4.0). A dataset must match at least one entry.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed dataset licences",
+          "type": "array"
+        },
+        "compute_allowed_pools": {
+          "default": [
+            "any"
+          ],
+          "description": "Pools a run or job may ask for: `any`, or pool names. A job that names another pool is refused; `auto` always resolves inside the allowed pools.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed compute pools",
+          "type": "array"
+        },
+        "compute_max_gpus_per_run": {
+          "default": 0,
+          "description": "Largest number of GPUs (over all nodes) one run or job may hold. 0 means no organisation-wide ceiling.",
+          "minimum": 0.0,
+          "title": "GPUs per run (ceiling)",
+          "type": "integer"
+        },
+        "inference": {
+          "additionalProperties": false,
+          "properties": {
+            "webhook_hosts": {
+              "default": [],
+              "description": "Host names a notify URL may point at. Empty means any host, once webhooks are allowed.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Hosts an inference may notify",
+              "type": "array"
+            },
+            "webhooks": {
+              "default": false,
+              "description": "When on, an inference may send a signed POST to a URL when its predictions are ready (`notify` in the API, \"Notify URL\" on an Inference node). The request carries ids and links, never arrays.",
+              "title": "Allow inference webhooks",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "max_cost_per_run": {
+          "default": 0.0,
+          "description": "Upper bound for the cost ceiling of any cloud run or sweep. 0 means no organisation-wide ceiling.",
+          "minimum": 0.0,
+          "title": "Cost ceiling per run (USD)",
+          "type": "number"
+        },
+        "plugin_sources": {
+          "default": [
+            "bundled",
+            "pypi",
+            "index",
+            "wheel_dir"
+          ],
+          "description": "Where plugins may be installed from: `bundled` (shipped with the product), `pypi` (the official index), `index` (the configured `plugins.index_url`), `wheel_dir` (the configured wheel directory), a URL or path prefix, or `any`. The default is the official index plus what an administrator configured; a path, wheel or URL named on a command line needs its prefix listed here (or `any`).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed plugin sources",
+          "type": "array"
+        },
+        "settings": {
+          "additionalProperties": false,
+          "properties": {
+            "edit_startup": {
+              "default": "local",
+              "description": "Who may change the settings a server reads when it starts (listen address, sign-in mode, limits, the secret store) through the API, the app and `frontier config set --on-server`, and restart it from there. `local`: only in single-user mode from this machine, written to the server's own config file. `admin`: any administrator who is signed in. `off`: only by editing the config file.",
+              "enum": [
+                "local",
+                "admin",
+                "off"
+              ],
+              "title": "Start-up settings from the app",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "title": "Policy",
+      "type": "object"
+    },
+    "secrets": {
+      "additionalProperties": false,
+      "description": "Which secret store holds credentials. Credentials themselves are never settings.",
+      "properties": {
+        "aws": {
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "default": "",
+              "description": "Endpoint of Secrets Manager when it is not the public one: a VPC endpoint, or an emulator in tests.",
+              "title": "AWS endpoint override",
+              "type": "string"
+            },
+            "kms_endpoint": {
+              "default": "",
+              "description": "Endpoint of KMS when it is not the public one: a VPC endpoint, or an emulator in tests.",
+              "title": "AWS KMS endpoint override",
+              "type": "string"
+            },
+            "kms_key_id": {
+              "default": "",
+              "description": "KMS key id, ARN or alias that new secrets are encrypted under; empty uses the account's default key for Secrets Manager.",
+              "title": "AWS KMS key",
+              "type": "string"
+            },
+            "prefix": {
+              "default": "frontier",
+              "description": "One secret per credential provider is kept as `<prefix>/<provider>`, a JSON object with one key per field.",
+              "title": "AWS secret name prefix",
+              "type": "string"
+            },
+            "region": {
+              "default": "",
+              "description": "Region of AWS Secrets Manager; empty uses `AWS_REGION`. Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (/ `AWS_SESSION_TOKEN`) in the environment.",
+              "title": "AWS region",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "azure": {
+          "additionalProperties": false,
+          "properties": {
+            "auth": {
+              "default": "managed_identity",
+              "description": "`managed_identity` (the identity of the VM, container or AKS pod) or `client_secret` (an app registration: `secrets.azure.tenant_id`, `secrets.azure.client_id`, and the secret from `AZURE_CLIENT_SECRET` or `secrets.azure.credential_file`).",
+              "enum": [
+                "managed_identity",
+                "client_secret"
+              ],
+              "title": "Azure authentication",
+              "type": "string"
+            },
+            "authority": {
+              "default": "",
+              "description": "Token endpoint host when it is not https://login.microsoftonline.com (sovereign clouds, or an emulator in tests).",
+              "title": "Azure authority override",
+              "type": "string"
+            },
+            "client_id": {
+              "default": "",
+              "description": "Application (client) id for `client_secret` authentication, or the client id of a user-assigned managed identity; empty uses `AZURE_CLIENT_ID`.",
+              "title": "Azure client id",
+              "type": "string"
+            },
+            "credential_file": {
+              "default": "",
+              "description": "File holding the client secret. Never put the value itself in a setting.",
+              "title": "Azure credential file",
+              "type": "string"
+            },
+            "prefix": {
+              "default": "frontier",
+              "description": "One secret per credential provider is kept as `<prefix>-<provider>` (Key Vault names allow letters, digits and dashes), a JSON object with one key per field.",
+              "title": "Azure secret name prefix",
+              "type": "string"
+            },
+            "tenant_id": {
+              "default": "",
+              "description": "Directory (tenant) id for `client_secret` authentication; empty uses `AZURE_TENANT_ID`.",
+              "title": "Azure tenant",
+              "type": "string"
+            },
+            "vault_url": {
+              "default": "",
+              "description": "Address of the key vault, for example https://frontier-prod.vault.azure.net.",
+              "title": "Azure Key Vault URL",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "backend": {
+          "default": "auto",
+          "description": "Where credentials are kept on this machine: the OS keychain, a 0600 file (`credentials.toml` in the state directory, for headless nodes), the environment only, or your organisation's secret manager: `vault` (HashiCorp Vault KV v2, `secrets.vault.*`), `aws` (AWS Secrets Manager, `secrets.aws.*`), `azure` (Azure Key Vault, `secrets.azure.*`) or `gcp` (Google Secret Manager, `secrets.gcp.*`). `auto` uses the keychain when one is available, else the file.",
+          "enum": [
+            "auto",
+            "keychain",
+            "file",
+            "env",
+            "vault",
+            "aws",
+            "azure",
+            "gcp"
+          ],
+          "title": "Secret store",
+          "type": "string"
+        },
+        "gcp": {
+          "additionalProperties": false,
+          "properties": {
+            "auth": {
+              "default": "metadata",
+              "description": "`metadata` (the service account of the VM, Cloud Run service or GKE workload identity) or `service_account` (a key file: `secrets.gcp.credential_file`, or `GOOGLE_APPLICATION_CREDENTIALS`).",
+              "enum": [
+                "metadata",
+                "service_account"
+              ],
+              "title": "Google authentication",
+              "type": "string"
+            },
+            "credential_file": {
+              "default": "",
+              "description": "JSON key file of the service account for `service_account` authentication.",
+              "title": "Google service-account key file",
+              "type": "string"
+            },
+            "endpoint": {
+              "default": "",
+              "description": "Endpoint when it is not https://secretmanager.googleapis.com (Private Service Connect, or an emulator in tests).",
+              "title": "Google Secret Manager endpoint override",
+              "type": "string"
+            },
+            "prefix": {
+              "default": "frontier",
+              "description": "One secret per credential provider is kept as `<prefix>-<provider>`, a JSON object with one key per field.",
+              "title": "Google secret id prefix",
+              "type": "string"
+            },
+            "project": {
+              "default": "",
+              "description": "Project id that holds the secrets; empty uses `GOOGLE_CLOUD_PROJECT`.",
+              "title": "Google Cloud project",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "key_file": {
+          "default": "",
+          "description": "File with the 32-byte key (hex or base64) that encrypts credentials stored by the server. FRONTIER_SECRET_KEY takes precedence. Empty uses `secret.key` in the server data directory, created on first start.",
+          "title": "Server encryption key file",
+          "type": "string"
+        },
+        "server_backend": {
+          "default": "db",
+          "description": "Where the control plane keeps the credentials people store on it: `db` (its own database, each value encrypted with the server key), `vault` (HashiCorp Vault, `secrets.vault.*`) or `aws` (AWS Secrets Manager, `secrets.aws.*`). New and changed credentials go to this store; `POST /api/v1/secrets/backend/migrate` moves the existing ones.",
+          "enum": [
+            "db",
+            "vault",
+            "aws",
+            "azure",
+            "gcp"
+          ],
+          "title": "Control plane credential store",
+          "type": "string"
+        },
+        "server_key": {
+          "default": "file",
+          "description": "How the key that encrypts the `db` credential store is kept: `file` (the key itself in `secrets.key_file`, or `FRONTIER_SECRET_KEY`) or `aws-kms` (envelope encryption: the file holds a data key wrapped by the KMS key `secrets.aws.kms_key_id`, unwrapped at start-up).",
+          "enum": [
+            "file",
+            "aws-kms"
+          ],
+          "title": "Control plane key protection",
+          "type": "string"
+        },
+        "vault": {
+          "additionalProperties": false,
+          "properties": {
+            "addr": {
+              "default": "",
+              "description": "Address of the HashiCorp Vault server, for example https://vault.example.com:8200.",
+              "title": "Vault address",
+              "type": "string"
+            },
+            "auth": {
+              "default": "token",
+              "description": "`token` (from `VAULT_TOKEN` or the credential file), `approle` (role id in `secrets.vault.role`, secret id from `FRONTIER_VAULT_SECRET_ID` or the credential file) or `kubernetes` (the pod's service-account token; role in `secrets.vault.role`).",
+              "enum": [
+                "token",
+                "approle",
+                "kubernetes"
+              ],
+              "title": "Vault authentication",
+              "type": "string"
+            },
+            "auth_mount": {
+              "default": "",
+              "description": "Mount point of the auth method when it is not the default (`approle`, `kubernetes`).",
+              "title": "Vault auth mount",
+              "type": "string"
+            },
+            "credential_file": {
+              "default": "",
+              "description": "File holding the Vault token or the AppRole secret id (or, for `kubernetes`, the service-account token when it is not at the standard path). Never put the value itself in a setting.",
+              "title": "Vault credential file",
+              "type": "string"
+            },
+            "mount": {
+              "default": "secret",
+              "description": "Mount point of the KV version 2 secrets engine.",
+              "title": "Vault KV mount",
+              "type": "string"
+            },
+            "namespace": {
+              "default": "",
+              "description": "Vault Enterprise / HCP namespace; empty for none.",
+              "title": "Vault namespace",
+              "type": "string"
+            },
+            "prefix": {
+              "default": "frontier",
+              "description": "Path under the mount; one secret per credential provider is kept at `<prefix>/<provider>`, with one key per field.",
+              "title": "Vault path prefix",
+              "type": "string"
+            },
+            "role": {
+              "default": "",
+              "description": "AppRole role id, or the role name of the Kubernetes auth method.",
+              "title": "Vault role",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "title": "Secrets",
+      "type": "object"
+    },
+    "server": {
+      "additionalProperties": false,
+      "description": "The control plane process (`frontier-server`).",
+      "properties": {
+        "allowed_hosts": {
+          "default": [],
+          "description": "Host names this server answers to besides localhost and the hosts of `server.cors_origins` (the public DNS name behind a proxy, a pod's proxy host). Requests with another `Host` are refused, which is what stops DNS rebinding. `*` accepts any host: only with authentication on.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Host names",
+          "type": "array"
+        },
+        "bind": {
+          "default": "127.0.0.1:8787",
+          "description": "Address and port the control plane listens on.",
+          "title": "Listen address",
+          "type": "string"
+        },
+        "cors_origins": {
+          "default": [],
+          "description": "Origins allowed to call the API besides localhost and the desktop app (for example https://frontier.example.com).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Additional browser origins",
+          "type": "array"
+        },
+        "data_dir": {
+          "default": "./frontier-data",
+          "description": "Artifacts, job logs and hub pulls of the control plane.",
+          "title": "Data directory",
+          "type": "string"
+        },
+        "db_path": {
+          "default": "./frontier.db",
+          "description": "SQLite database of the control plane.",
+          "title": "Database file",
+          "type": "string"
+        },
+        "inference_keep_per_node": {
+          "default": 20,
+          "description": "How many predictions made by an automatic rule (a new checkpoint, a schedule) are kept for one Inference node; older ones are removed with their files. Predictions a person asked for are never removed. 0 keeps all.",
+          "minimum": 0.0,
+          "title": "Automatic predictions kept per node",
+          "type": "integer"
+        },
+        "inject_credentials": {
+          "default": true,
+          "description": "Hand credentials stored on the server to the jobs that ask for them when a worker claims the job. When off, jobs only see what the worker's own environment provides.",
+          "title": "Give credentials to jobs",
+          "type": "boolean"
+        },
+        "service_idle_release_min": {
+          "default": 0,
+          "description": "A running service that took no request for this long is stopped and its worker released; the next call starts it again and waits for it. 0 keeps services running.",
+          "minimum": 0.0,
+          "title": "Release an idle service after (minutes)",
+          "type": "integer"
+        },
+        "service_max_request_mb": {
+          "default": 64,
+          "description": "A call with a larger body is refused with 413. A service can set its own.",
+          "maximum": 4096.0,
+          "minimum": 1.0,
+          "title": "Largest request to a service (MB)",
+          "type": "integer"
+        },
+        "service_rate_per_min": {
+          "default": 600,
+          "description": "At most this many calls per minute to one service; more are refused with 429. A service can set its own.",
+          "minimum": 0.0,
+          "title": "Requests per minute per service",
+          "type": "integer"
+        },
+        "service_warm": {
+          "default": 1,
+          "description": "How many requests the runtime of a served board answers at the same time; the rest wait. A service can set its own.",
+          "minimum": 1.0,
+          "title": "Requests a service answers at once",
+          "type": "integer"
+        }
+      },
+      "title": "Server",
+      "type": "object"
+    },
+    "slurm": {
+      "additionalProperties": false,
+      "description": "Defaults for SLURM targets; per-cluster details live in site profiles.",
+      "properties": {
+        "account": {
+          "default": "",
+          "description": "Accounting project for generated batch scripts when the site profile does not set one.",
+          "title": "Account",
+          "type": "string"
+        },
+        "default_site": {
+          "default": "",
+          "description": "Site profile (a file in the `sites` directory of the Frontier home) used by --on slurm / --on ssh when neither --site nor --host is given.",
+          "title": "Default site profile",
+          "type": "string"
+        },
+        "partition": {
+          "default": "",
+          "description": "Partition for generated batch scripts when the site profile does not set one.",
+          "title": "Partition",
+          "type": "string"
+        },
+        "time_limit": {
+          "default": "08:00:00",
+          "description": "Wall-clock limit (HH:MM:SS) of a generated worker allocation.",
+          "title": "Time limit",
+          "type": "string"
+        }
+      },
+      "title": "SLURM",
+      "type": "object"
+    },
+    "storage": {
+      "additionalProperties": false,
+      "description": "Where datasets, raw downloads, caches and run records are kept.",
+      "properties": {
+        "cache_dir": {
+          "default": "~/.cache/frontier",
+          "description": "Downloads that can be fetched again (cloud-solver results, plugin wheels).",
+          "title": "Cache directory",
+          "type": "string"
+        },
+        "datasets_dir": {
+          "default": "~/frontier/datasets",
+          "description": "Where converted frontier-datasets go. On a server, when set: cases converted on the Connectors page (`<dir>/converted/<name>`) and hub pulls (`<dir>/hub/<id>`) are written here instead of the server's data directory.",
+          "title": "Datasets directory",
+          "type": "string"
+        },
+        "import_roots": {
+          "default": [],
+          "description": "Directories under which a request may name a path for the server to read or write (registering a dataset, trying a connector, a hub pull target). The data directory and `storage.datasets_dir` always count. Empty: no further restriction in single-user mode; with authentication on, only those two.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Directories the server may read on request",
+          "type": "array"
+        },
+        "raw_dir": {
+          "default": "datasets/raw",
+          "description": "Where `frontier hub pull` stores files as published, one sub-directory per dataset. Relative paths are relative to the working directory.",
+          "title": "Raw downloads directory",
+          "type": "string"
+        },
+        "runs_dir": {
+          "default": "runs",
+          "description": "Where local runs write checkpoints, logs and reports. Relative paths are relative to the working directory.",
+          "title": "Run output directory",
+          "type": "string"
+        }
+      },
+      "title": "Storage",
+      "type": "object"
+    },
+    "ui": {
+      "additionalProperties": false,
+      "description": "Presentation preferences of the app and the TUI.",
+      "properties": {
+        "colormap": {
+          "default": "viridis",
+          "description": "Colour map applied to a scalar field when none was chosen.",
+          "enum": [
+            "viridis",
+            "plasma",
+            "inferno",
+            "magma",
+            "cividis",
+            "turbo",
+            "coolwarm",
+            "grayscale"
+          ],
+          "title": "Default colour map",
+          "type": "string"
+        },
+        "refresh_ms": {
+          "default": 1000,
+          "description": "How often the TUI and live views poll for new data.",
+          "maximum": 60000.0,
+          "minimum": 100.0,
+          "title": "Refresh interval (ms)",
+          "type": "integer"
+        },
+        "theme": {
+          "default": "system",
+          "description": "Colour theme of the app and the TUI.",
+          "enum": [
+            "system",
+            "light",
+            "dark"
+          ],
+          "title": "Theme",
+          "type": "string"
+        },
+        "units": {
+          "default": "si",
+          "description": "Unit system used when displaying physical quantities.",
+          "enum": [
+            "si",
+            "imperial"
+          ],
+          "title": "Units",
+          "type": "string"
+        }
+      },
+      "title": "Interface",
+      "type": "object"
+    },
+    "viewer": {
+      "additionalProperties": false,
+      "description": "How the 3D and 2D views of the app respond to the mouse.",
+      "properties": {
+        "invert_orbit_x": {
+          "default": false,
+          "description": "With navigation style `custom`: a drag to the left turns the object to the right.",
+          "title": "Invert horizontal orbit",
+          "type": "boolean"
+        },
+        "invert_orbit_y": {
+          "default": false,
+          "description": "With navigation style `custom`: a drag down turns the object up.",
+          "title": "Invert vertical orbit",
+          "type": "boolean"
+        },
+        "invert_zoom": {
+          "default": false,
+          "description": "With navigation style `custom`: rolling the wheel away from you zooms out.",
+          "title": "Invert zoom",
+          "type": "boolean"
+        },
+        "navigation": {
+          "default": "follow",
+          "description": "`follow`: the object follows the hand when you drag, and rolling the wheel away from you zooms in, as in ParaView. `camera`: drags move the camera instead. `custom`: the three switches below.",
+          "enum": [
+            "follow",
+            "camera",
+            "custom"
+          ],
+          "title": "Navigation style",
+          "type": "string"
+        },
+        "probe_cursor": {
+          "default": "crosshair",
+          "description": "Pointer shown over a 3D or 2D view while it reads the value under it. Dragging always shows the grabbing hand.",
+          "enum": [
+            "crosshair",
+            "arrow",
+            "cell",
+            "hand"
+          ],
+          "title": "Probe cursor",
+          "type": "string"
+        }
+      },
+      "title": "Viewer",
+      "type": "object"
+    },
+    "worker": {
+      "additionalProperties": false,
+      "description": "The worker process (`frontier-worker`) on a compute node.",
+      "properties": {
+        "backend": {
+          "default": "local",
+          "description": "Which jobs this worker claims.",
+          "title": "Backend",
+          "type": "string"
+        },
+        "heartbeat_secs": {
+          "default": 10,
+          "description": "How often the worker reports to the control plane and asks for work.",
+          "maximum": 3600.0,
+          "minimum": 1.0,
+          "title": "Heartbeat interval (seconds)",
+          "type": "integer"
+        },
+        "job_env_passthrough": {
+          "default": [],
+          "description": "Names of environment variables of the worker process that jobs inherit, besides the basic ones (PATH, HOME, locale, temporary directory, CUDA/NVIDIA, Python and proxy variables). A job never inherits the worker's token or any other variable by default: what it needs comes with the job.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Worker variables jobs may see",
+          "type": "array"
+        },
+        "job_user": {
+          "default": "",
+          "description": "Operating-system user jobs are started as when the worker runs as root (containers, system services), so a job cannot read the worker's files or signal it. Empty runs jobs as the worker's own user.",
+          "title": "User that jobs run as",
+          "type": "string"
+        },
+        "labels": {
+          "default": [],
+          "description": "Labels this worker advertises (`gpu=h100`, `site=eu`); a job is claimed only by a worker with all of its labels.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "term_grace_secs": {
+          "default": 300,
+          "description": "Time a cancelled job gets between SIGTERM and SIGKILL. The job uses it to stop its step and to pack and upload what it produced (checkpoints, metrics, evaluation files).",
+          "maximum": 86400.0,
+          "minimum": 0.0,
+          "title": "Termination grace (seconds)",
+          "type": "integer"
+        },
+        "use_docker": {
+          "default": false,
+          "description": "Run a job's image with Docker instead of as a bare process.",
+          "title": "Run jobs in containers",
+          "type": "boolean"
+        },
+        "workdir": {
+          "default": ".",
+          "description": "Directory jobs run in when they do not name one.",
+          "title": "Working directory",
+          "type": "string"
+        }
+      },
+      "title": "Worker",
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

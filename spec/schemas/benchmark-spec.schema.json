@@ -1,0 +1,434 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/benchmark-spec.schema.json",
+  "title": "BenchmarkSpec",
+  "$defs": {
+    "ForecastOptions": {
+      "description": "A `task: rollout` spec with this block scores signal forecasts from many origins\n(`frontier_eval.signals`): horizon-wise error per channel against persistence, conformal\ninterval coverage and latency per update.",
+      "properties": {
+        "targets": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Targets"
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Steps"
+        },
+        "time_units": {
+          "default": "s",
+          "title": "Time Units",
+          "type": "string"
+        }
+      },
+      "title": "ForecastOptions",
+      "type": "object"
+    },
+    "Reference": {
+      "properties": {
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "dataset": {
+          "default": "",
+          "title": "Dataset",
+          "type": "string"
+        },
+        "citation": {
+          "default": "",
+          "title": "Citation",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "metric",
+        "value"
+      ],
+      "title": "Reference",
+      "type": "object"
+    },
+    "RolloutOptions": {
+      "description": "Knobs of `task: rollout` (see `frontier_eval.transient`).",
+      "properties": {
+        "steps": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Steps"
+        },
+        "max_rollout_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rollout Steps"
+        },
+        "horizon_l2_rel": {
+          "default": 0.2,
+          "title": "Horizon L2 Rel",
+          "type": "number"
+        },
+        "horizon_corr": {
+          "default": 0.8,
+          "title": "Horizon Corr",
+          "type": "number"
+        },
+        "blowup_factor": {
+          "default": 10.0,
+          "title": "Blowup Factor",
+          "type": "number"
+        },
+        "windows": {
+          "additionalProperties": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Windows",
+          "type": "object"
+        },
+        "param_bins": {
+          "default": 4,
+          "title": "Param Bins",
+          "type": "integer"
+        },
+        "min_steps_frequency": {
+          "default": 16,
+          "title": "Min Steps Frequency",
+          "type": "integer"
+        },
+        "spectra_max_steps": {
+          "default": 32,
+          "title": "Spectra Max Steps",
+          "type": "integer"
+        },
+        "max_curve_points": {
+          "default": 200,
+          "title": "Max Curve Points",
+          "type": "integer"
+        },
+        "coverage": {
+          "default": 0.9,
+          "title": "Coverage",
+          "type": "number"
+        }
+      },
+      "title": "RolloutOptions",
+      "type": "object"
+    },
+    "Threshold": {
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        },
+        "aggregate": {
+          "default": "mean",
+          "enum": [
+            "mean",
+            "median",
+            "p10",
+            "p90",
+            "p95",
+            "max",
+            "min",
+            "value"
+          ],
+          "title": "Aggregate",
+          "type": "string"
+        }
+      },
+      "title": "Threshold",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "title": {
+      "default": "",
+      "title": "Title",
+      "type": "string"
+    },
+    "dataset_family": {
+      "title": "Dataset Family",
+      "type": "string"
+    },
+    "task": {
+      "enum": [
+        "surface_field",
+        "integral",
+        "rollout"
+      ],
+      "title": "Task",
+      "type": "string"
+    },
+    "field": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Field"
+    },
+    "sample_kinds": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sample Kinds"
+    },
+    "fields": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "const": "all",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fields"
+    },
+    "rollout": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RolloutOptions"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "forecast": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ForecastOptions"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tier_direction": {
+      "anyOf": [
+        {
+          "enum": [
+            "lower",
+            "higher"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tier Direction"
+    },
+    "quantity": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quantity"
+    },
+    "loads": {
+      "anyOf": [
+        {
+          "enum": [
+            "airfoil2d",
+            "heatsink"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Loads"
+    },
+    "split": {
+      "default": "test",
+      "title": "Split",
+      "type": "string"
+    },
+    "metrics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "primary_metric": {
+      "default": "",
+      "title": "Primary Metric",
+      "type": "string"
+    },
+    "metric_prefix": {
+      "default": "",
+      "title": "Metric Prefix",
+      "type": "string"
+    },
+    "thresholds": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Threshold"
+      },
+      "title": "Thresholds",
+      "type": "object"
+    },
+    "tiers": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Tiers",
+      "type": "object"
+    },
+    "reference": {
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "title": "Reference",
+      "type": "array"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "status": {
+      "default": "implemented",
+      "enum": [
+        "implemented",
+        "spec-only"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "source": {
+      "default": "",
+      "title": "Source",
+      "type": "string"
+    },
+    "aliases": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Aliases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "dataset_family",
+    "task"
+  ],
+  "type": "object"
+}

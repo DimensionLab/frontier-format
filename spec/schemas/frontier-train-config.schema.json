@@ -1,0 +1,1228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/frontier-train-config.schema.json",
+  "title": "Frontier training config",
+  "description": "A frontier_train training configuration (YAML or JSON). `task: transient` selects the transient model; anything else is the surface/finetune model.",
+  "type": "object",
+  "if": {
+    "properties": {
+      "task": {
+        "const": "transient"
+      }
+    },
+    "required": [
+      "task"
+    ]
+  },
+  "then": {
+    "title": "Transient",
+    "properties": {
+      "task": {
+        "const": "transient",
+        "default": "transient",
+        "title": "Task",
+        "type": "string"
+      },
+      "data": {
+        "$ref": "#/$defs/TransientDataConfig"
+      },
+      "model": {
+        "$ref": "#/$defs/ModelConfig"
+      },
+      "optim": {
+        "$ref": "#/$defs/OptimConfig"
+      },
+      "loss": {
+        "$ref": "#/$defs/TransientLossConfig"
+      },
+      "eval": {
+        "$ref": "#/$defs/RolloutEvalConfig"
+      },
+      "logging": {
+        "$ref": "#/$defs/LoggingConfig"
+      },
+      "train": {
+        "$ref": "#/$defs/TrainConfig"
+      },
+      "finetune": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/FinetuneConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "data"
+    ],
+    "type": "object"
+  },
+  "else": {
+    "title": "Surface / finetune",
+    "properties": {
+      "task": {
+        "default": "surface",
+        "enum": [
+          "surface",
+          "finetune",
+          "finetune-compare"
+        ],
+        "title": "Task",
+        "type": "string"
+      },
+      "finetune": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/FinetuneConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "data": {
+        "$ref": "#/$defs/DataConfig"
+      },
+      "model": {
+        "$ref": "#/$defs/ModelConfig"
+      },
+      "optim": {
+        "$ref": "#/$defs/OptimConfig"
+      },
+      "loss": {
+        "$ref": "#/$defs/LossConfig"
+      },
+      "logging": {
+        "$ref": "#/$defs/LoggingConfig"
+      },
+      "train": {
+        "$ref": "#/$defs/TrainConfig"
+      }
+    },
+    "required": [
+      "data"
+    ],
+    "type": "object"
+  },
+  "$defs": {
+    "CompareConfig": {
+      "description": "`finetune-compare`: fine-tune vs from scratch at equal data and equal budget.",
+      "properties": {
+        "sizes": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Sizes",
+          "type": "array"
+        },
+        "seeds": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Seeds",
+          "type": "array"
+        },
+        "scratch": {
+          "default": true,
+          "title": "Scratch",
+          "type": "boolean"
+        },
+        "test_split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "test",
+          "title": "Test Split"
+        },
+        "predict_lod": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Predict Lod"
+        },
+        "predict_chunk": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Predict Chunk"
+        }
+      },
+      "title": "CompareConfig",
+      "type": "object"
+    },
+    "DataConfig": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "lod": {
+          "default": 0,
+          "title": "Lod",
+          "type": "integer"
+        },
+        "target_field": {
+          "default": "p",
+          "title": "Target Field",
+          "type": "string"
+        },
+        "field_location": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "point",
+            "cell"
+          ],
+          "title": "Field Location",
+          "type": "string"
+        },
+        "cond_names": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cond Names"
+        },
+        "num_points": {
+          "default": 8192,
+          "title": "Num Points",
+          "type": "integer"
+        },
+        "eval_num_points": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eval Num Points"
+        },
+        "batch_size": {
+          "default": 4,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "eval_batch_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eval Batch Size"
+        },
+        "num_workers": {
+          "default": 0,
+          "title": "Num Workers",
+          "type": "integer"
+        },
+        "pin_memory": {
+          "default": false,
+          "title": "Pin Memory",
+          "type": "boolean"
+        },
+        "cache_samples": {
+          "default": true,
+          "title": "Cache Samples",
+          "type": "boolean"
+        },
+        "train_split": {
+          "default": "train",
+          "title": "Train Split",
+          "type": "string"
+        },
+        "val_split": {
+          "default": "val",
+          "title": "Val Split",
+          "type": "string"
+        },
+        "normalization_max_samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalization Max Samples"
+        },
+        "allow_ungated": {
+          "default": false,
+          "title": "Allow Ungated",
+          "type": "boolean"
+        },
+        "synthetic": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Synthetic"
+        },
+        "point_features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Point Features",
+          "type": "array"
+        },
+        "split_family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Split Family"
+        },
+        "max_train_samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Train Samples"
+        },
+        "resplit": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resplit"
+        },
+        "subset_seed": {
+          "default": 0,
+          "title": "Subset Seed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "DataConfig",
+      "type": "object"
+    },
+    "FinetuneConfig": {
+      "description": "Fine-tuning policy (``task: finetune``, or ``python -m frontier_train finetune``).",
+      "properties": {
+        "base": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base"
+        },
+        "key_map": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Key Map",
+          "type": "object"
+        },
+        "partial_load": {
+          "default": true,
+          "title": "Partial Load",
+          "type": "boolean"
+        },
+        "reinit": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reinit",
+          "type": "array"
+        },
+        "freeze": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Freeze",
+          "type": "array"
+        },
+        "train_only": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Train Only"
+        },
+        "unfreeze": {
+          "items": {
+            "$ref": "#/$defs/UnfreezeStep"
+          },
+          "title": "Unfreeze",
+          "type": "array"
+        },
+        "llrd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Llrd"
+        },
+        "head_lr_mult": {
+          "default": 1.0,
+          "title": "Head Lr Mult",
+          "type": "number"
+        },
+        "lora": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LoraConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "normalization": {
+          "default": "refit",
+          "enum": [
+            "refit",
+            "base"
+          ],
+          "title": "Normalization",
+          "type": "string"
+        },
+        "compare": {
+          "$ref": "#/$defs/CompareConfig"
+        }
+      },
+      "title": "FinetuneConfig",
+      "type": "object"
+    },
+    "LoggingConfig": {
+      "properties": {
+        "project": {
+          "default": "frontier-train",
+          "title": "Project",
+          "type": "string"
+        },
+        "run_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Name"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Directory"
+        },
+        "server": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Server"
+        },
+        "log_every": {
+          "default": 1,
+          "title": "Log Every",
+          "type": "integer"
+        },
+        "topology_every": {
+          "default": 100,
+          "title": "Topology Every",
+          "type": "integer"
+        },
+        "adopt_run": {
+          "default": true,
+          "title": "Adopt Run",
+          "type": "boolean"
+        }
+      },
+      "title": "LoggingConfig",
+      "type": "object"
+    },
+    "LoraConfig": {
+      "description": "Low-rank adapters on Linear layers: ``W x + (alpha / rank) * B A x``, base ``W`` frozen.",
+      "properties": {
+        "rank": {
+          "default": 8,
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "alpha": {
+          "default": 16.0,
+          "title": "Alpha",
+          "type": "number"
+        },
+        "dropout": {
+          "default": 0.0,
+          "title": "Dropout",
+          "type": "number"
+        },
+        "targets": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "title": "LoraConfig",
+      "type": "object"
+    },
+    "LossConfig": {
+      "properties": {
+        "p_weight": {
+          "default": 1.0,
+          "title": "P Weight",
+          "type": "number"
+        },
+        "cd_weight": {
+          "default": 1.0,
+          "title": "Cd Weight",
+          "type": "number"
+        },
+        "p_loss": {
+          "default": "rel_l2",
+          "enum": [
+            "rel_l2",
+            "mse"
+          ],
+          "title": "P Loss",
+          "type": "string"
+        }
+      },
+      "title": "LossConfig",
+      "type": "object"
+    },
+    "ModelConfig": {
+      "properties": {
+        "name": {
+          "default": "pointmlp",
+          "title": "Name",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "title": "ModelConfig",
+      "type": "object"
+    },
+    "OptimConfig": {
+      "properties": {
+        "lr": {
+          "default": 0.001,
+          "title": "Lr",
+          "type": "number"
+        },
+        "min_lr": {
+          "default": 1e-05,
+          "title": "Min Lr",
+          "type": "number"
+        },
+        "weight_decay": {
+          "default": 0.0001,
+          "title": "Weight Decay",
+          "type": "number"
+        },
+        "betas": {
+          "default": [
+            0.9,
+            0.999
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Betas",
+          "type": "array"
+        },
+        "warmup_steps": {
+          "default": 0,
+          "title": "Warmup Steps",
+          "type": "integer"
+        },
+        "grad_clip": {
+          "default": 1.0,
+          "title": "Grad Clip",
+          "type": "number"
+        },
+        "schedule": {
+          "default": "cosine",
+          "enum": [
+            "cosine",
+            "constant"
+          ],
+          "title": "Schedule",
+          "type": "string"
+        }
+      },
+      "title": "OptimConfig",
+      "type": "object"
+    },
+    "TrainConfig": {
+      "properties": {
+        "epochs": {
+          "default": 10,
+          "title": "Epochs",
+          "type": "integer"
+        },
+        "max_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Steps"
+        },
+        "max_minutes": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Minutes"
+        },
+        "seed": {
+          "default": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "device": {
+          "default": "auto",
+          "title": "Device",
+          "type": "string"
+        },
+        "amp": {
+          "default": true,
+          "title": "Amp",
+          "type": "boolean"
+        },
+        "tf32": {
+          "default": true,
+          "title": "Tf32",
+          "type": "boolean"
+        },
+        "compile": {
+          "default": false,
+          "title": "Compile",
+          "type": "boolean"
+        },
+        "out_dir": {
+          "default": "runs/default",
+          "title": "Out Dir",
+          "type": "string"
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resume"
+        },
+        "checkpoint_every_epoch": {
+          "default": true,
+          "title": "Checkpoint Every Epoch",
+          "type": "boolean"
+        },
+        "val_every": {
+          "default": 1,
+          "title": "Val Every",
+          "type": "integer"
+        },
+        "val_full_resolution": {
+          "default": false,
+          "title": "Val Full Resolution",
+          "type": "boolean"
+        },
+        "deterministic": {
+          "default": false,
+          "title": "Deterministic",
+          "type": "boolean"
+        },
+        "early_stop_patience": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Early Stop Patience"
+        },
+        "early_stop_min_delta": {
+          "default": 0.0,
+          "title": "Early Stop Min Delta",
+          "type": "number"
+        }
+      },
+      "title": "TrainConfig",
+      "type": "object"
+    },
+    "UnfreezeStep": {
+      "properties": {
+        "at_epoch": {
+          "minimum": 0,
+          "title": "At Epoch",
+          "type": "integer"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Patterns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "at_epoch"
+      ],
+      "title": "UnfreezeStep",
+      "type": "object"
+    },
+    "ForecastEvalConfig": {
+      "description": "Multi-horizon forecasting of signal datasets (``frontier_train.transient.forecast``):\nvalidation forecasts ``horizon`` steps from every ``origin_stride``-th origin, selects the\ncheckpoint on their normalised MAE and writes split-conformal intervals at ``1 - alpha``\nfrom the validation residuals (``conformal.json``, served with the forecasts).",
+      "properties": {
+        "horizon": {
+          "default": 6,
+          "minimum": 1,
+          "title": "Horizon",
+          "type": "integer"
+        },
+        "origin_stride": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Origin Stride",
+          "type": "integer"
+        },
+        "max_origins": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 20000,
+          "title": "Max Origins"
+        },
+        "alpha": {
+          "default": 0.1,
+          "exclusiveMaximum": 1.0,
+          "exclusiveMinimum": 0.0,
+          "title": "Alpha",
+          "type": "number"
+        },
+        "batch_size": {
+          "default": 1024,
+          "title": "Batch Size",
+          "type": "integer"
+        }
+      },
+      "title": "ForecastEvalConfig",
+      "type": "object"
+    },
+    "LeadConfig": {
+      "description": "Lead time Δ in units of (strided) steps. ``fixed``: always ``max``. ``random``: drawn\nuniformly from 1..``max`` per training pair (\"all2all\" lead-time conditioning, the model is\ntold Δ and can be queried at any of them).",
+      "properties": {
+        "mode": {
+          "default": "fixed",
+          "enum": [
+            "fixed",
+            "random"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "max": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Max",
+          "type": "integer"
+        }
+      },
+      "title": "LeadConfig",
+      "type": "object"
+    },
+    "RolloutEvalConfig": {
+      "properties": {
+        "rollout_steps": {
+          "default": 32,
+          "title": "Rollout Steps",
+          "type": "integer"
+        },
+        "horizon_threshold": {
+          "default": 0.2,
+          "title": "Horizon Threshold",
+          "type": "number"
+        },
+        "report_steps": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report Steps"
+        },
+        "onestep_windows": {
+          "default": 64,
+          "title": "Onestep Windows",
+          "type": "integer"
+        },
+        "spectral": {
+          "default": true,
+          "title": "Spectral",
+          "type": "boolean"
+        },
+        "forecast": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ForecastEvalConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "RolloutEvalConfig",
+      "type": "object"
+    },
+    "TransientDataConfig": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "aux_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aux Fields",
+          "type": "array"
+        },
+        "static_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Static Fields"
+        },
+        "cond_names": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cond Names"
+        },
+        "history": {
+          "default": 1,
+          "minimum": 1,
+          "title": "History",
+          "type": "integer"
+        },
+        "lead": {
+          "$ref": "#/$defs/LeadConfig"
+        },
+        "stride": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Stride",
+          "type": "integer"
+        },
+        "window_stride": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Window Stride",
+          "type": "integer"
+        },
+        "max_train_step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Train Step"
+        },
+        "batch_size": {
+          "default": 8,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "num_workers": {
+          "default": 0,
+          "title": "Num Workers",
+          "type": "integer"
+        },
+        "pin_memory": {
+          "default": false,
+          "title": "Pin Memory",
+          "type": "boolean"
+        },
+        "cache": {
+          "default": true,
+          "title": "Cache",
+          "type": "boolean"
+        },
+        "num_points": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Num Points"
+        },
+        "train_split": {
+          "default": "train",
+          "title": "Train Split",
+          "type": "string"
+        },
+        "val_split": {
+          "default": "val",
+          "title": "Val Split",
+          "type": "string"
+        },
+        "max_train_trajectories": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Train Trajectories"
+        },
+        "max_val_trajectories": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Val Trajectories"
+        },
+        "normalization_max_samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 32,
+          "title": "Normalization Max Samples"
+        },
+        "allow_ungated": {
+          "default": false,
+          "title": "Allow Ungated",
+          "type": "boolean"
+        },
+        "fixed_node_types": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Fixed Node Types",
+          "type": "array"
+        },
+        "fixed_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixed Fields"
+        },
+        "synthetic": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Synthetic"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "TransientDataConfig",
+      "type": "object"
+    },
+    "TransientLossConfig": {
+      "properties": {
+        "kind": {
+          "default": "rel_l2",
+          "enum": [
+            "rel_l2",
+            "mse"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "predict": {
+          "default": "delta",
+          "enum": [
+            "delta",
+            "state"
+          ],
+          "title": "Predict",
+          "type": "string"
+        },
+        "unroll": {
+          "$ref": "#/$defs/UnrollConfig"
+        },
+        "noise_std": {
+          "default": 0.0,
+          "title": "Noise Std",
+          "type": "number"
+        },
+        "field_weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Field Weights",
+          "type": "object"
+        }
+      },
+      "title": "TransientLossConfig",
+      "type": "object"
+    },
+    "UnrollConfig": {
+      "description": "Multi-step training. ``k`` model applications per batch; ``curriculum`` is a list of\n``[fraction_of_training, k]`` raising k over time (the largest k is what the data loader\nprovides). ``bptt`` backpropagates through all k steps (truncated BPTT), ``detach`` cuts\nthe gradient between steps, ``pushforward`` (Brandstetter et al. 2022) runs k-1 steps\nwithout gradient and trains on the first and the last step.",
+      "properties": {
+        "k": {
+          "default": 1,
+          "minimum": 1,
+          "title": "K",
+          "type": "integer"
+        },
+        "mode": {
+          "default": "bptt",
+          "enum": [
+            "bptt",
+            "detach",
+            "pushforward"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "curriculum": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Curriculum",
+          "type": "array"
+        }
+      },
+      "title": "UnrollConfig",
+      "type": "object"
+    }
+  }
+}

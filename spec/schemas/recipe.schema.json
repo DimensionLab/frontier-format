@@ -1,0 +1,2588 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/recipe.schema.json",
+  "title": "Recipe",
+  "$defs": {
+    "Actor": {
+      "additionalProperties": false,
+      "description": "Who asked for the op: a person, an agent (model id) or a recipe.",
+      "properties": {
+        "kind": {
+          "default": "human",
+          "enum": [
+            "human",
+            "agent",
+            "recipe",
+            "system"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "session": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approved By"
+        }
+      },
+      "title": "Actor",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "title": "Op",
+          "type": "string",
+          "enum": [
+            "prep.dataset.balance",
+            "prep.dataset.coverage",
+            "prep.dataset.dedup",
+            "prep.dataset.merge",
+            "prep.dataset.select",
+            "prep.dataset.split",
+            "prep.dataset.summarize",
+            "prep.fields.cast_location",
+            "prep.fields.components",
+            "prep.fields.map",
+            "prep.fields.nan_fix",
+            "prep.fields.normalize",
+            "prep.fields.outlier_detect",
+            "prep.fields.rename",
+            "prep.fields.smooth",
+            "prep.mesh.decimate",
+            "prep.mesh.merge_seams",
+            "prep.mesh.orient_outward",
+            "prep.mesh.part_ids",
+            "prep.mesh.repair",
+            "prep.mesh.resample",
+            "prep.mesh.transform",
+            "prep.mesh.watertight_check",
+            "prep.params.set",
+            "prep.quality.check",
+            "prep.quality.gate",
+            "prep.scalars.derive",
+            "prep.time.align",
+            "prep.time.continuity_check",
+            "prep.time.drop_duplicate_frames",
+            "prep.time.subsample",
+            "prep.time.trim",
+            "prep.time.window_average",
+            "prep.units.convert"
+          ]
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        },
+        "continue_on_fail": {
+          "default": false,
+          "title": "Continue On Fail",
+          "type": "boolean"
+        },
+        "op_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Op Version"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "Step",
+      "type": "object",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.dataset.balance"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_dataset_balance"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.dataset.coverage"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_dataset_coverage"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.dataset.dedup"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_dataset_dedup"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.dataset.merge"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_dataset_merge"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.dataset.select"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_dataset_select"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.dataset.split"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_dataset_split"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.dataset.summarize"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_dataset_summarize"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.cast_location"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_cast_location"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.components"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_components"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.map"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_map"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.nan_fix"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_nan_fix"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.normalize"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_normalize"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.outlier_detect"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_outlier_detect"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.rename"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_rename"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.fields.smooth"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_fields_smooth"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.decimate"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_decimate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.merge_seams"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_merge_seams"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.orient_outward"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_orient_outward"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.part_ids"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_part_ids"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.repair"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_repair"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.resample"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_resample"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.transform"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_transform"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.watertight_check"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_watertight_check"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.params.set"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_params_set"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.quality.check"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_quality_check"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.quality.gate"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_quality_gate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.scalars.derive"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_scalars_derive"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.time.align"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_time_align"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.time.continuity_check"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_time_continuity_check"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.time.drop_duplicate_frames"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_time_drop_duplicate_frames"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.time.subsample"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_time_subsample"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.time.trim"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_time_trim"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.time.window_average"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_time_window_average"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.units.convert"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_units_convert"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "op_prep_dataset_balance": {
+      "title": "prep.dataset.balance",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "parameter": {
+          "title": "Parameter",
+          "type": "string"
+        },
+        "bins": {
+          "default": 5,
+          "minimum": 2,
+          "title": "Bins",
+          "type": "integer"
+        },
+        "edges": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit bin edges instead of quantiles.",
+          "title": "Edges"
+        },
+        "split": {
+          "default": "train",
+          "title": "Split",
+          "type": "string"
+        },
+        "method": {
+          "default": "inverse_frequency",
+          "enum": [
+            "inverse_frequency",
+            "sqrt_inverse"
+          ],
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "parameter"
+      ],
+      "type": "object"
+    },
+    "op_prep_dataset_coverage": {
+      "title": "prep.dataset.coverage",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "parameters": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parameters"
+        },
+        "bins": {
+          "default": 10,
+          "minimum": 2,
+          "title": "Bins",
+          "type": "integer"
+        },
+        "n_suggest": {
+          "default": 0,
+          "description": "Propose this many new parameter points (maximin over a seeded LHS candidate set).",
+          "minimum": 0,
+          "title": "N Suggest",
+          "type": "integer"
+        },
+        "n_candidates": {
+          "default": 2000,
+          "title": "N Candidates",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Restrict to a split (e.g. train).",
+          "title": "Split"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_dataset_dedup": {
+      "title": "prep.dataset.dedup",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "default": "report",
+          "enum": [
+            "report",
+            "drop"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "exact": {
+          "default": true,
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "near": {
+          "default": true,
+          "description": "Near-duplicates by geometry invariants and point-cloud distance.",
+          "title": "Near",
+          "type": "boolean"
+        },
+        "invariant_tol": {
+          "default": 0.01,
+          "description": "Relative tolerance on area/bbox/moments (1 % rule).",
+          "title": "Invariant Tol",
+          "type": "number"
+        },
+        "chamfer_tol": {
+          "default": 0.001,
+          "description": "Chamfer distance / bbox diagonal threshold.",
+          "title": "Chamfer Tol",
+          "type": "number"
+        },
+        "n_probe": {
+          "default": 2000,
+          "description": "Seeded probe points for the distance test.",
+          "title": "N Probe",
+          "type": "integer"
+        },
+        "compare_parameters": {
+          "default": true,
+          "description": "Equal parameters make an exact duplicate; different parameters with the same geometry are a 'rerun' judgment.",
+          "title": "Compare Parameters",
+          "type": "boolean"
+        },
+        "delete_dirs": {
+          "default": true,
+          "title": "Delete Dirs",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_dataset_merge": {
+      "title": "prep.dataset.merge",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "description": "Path of the dataset to merge in.",
+          "title": "Source",
+          "type": "string"
+        },
+        "prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prefix for incoming sample ids (default: source name + '/').",
+          "title": "Prefix"
+        },
+        "on_conflict": {
+          "default": "fail",
+          "enum": [
+            "fail",
+            "skip",
+            "rename"
+          ],
+          "title": "On Conflict",
+          "type": "string"
+        },
+        "require_same_units": {
+          "default": true,
+          "title": "Require Same Units",
+          "type": "boolean"
+        },
+        "merge_splits": {
+          "default": true,
+          "title": "Merge Splits",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "type": "object"
+    },
+    "Predicate": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "parameters.<name> | geometry_params.<name> | forces.<name> | n_points | n_steps | id",
+          "title": "Key",
+          "type": "string"
+        },
+        "op": {
+          "enum": [
+            "==",
+            "!=",
+            "<",
+            "<=",
+            ">",
+            ">=",
+            "in",
+            "matches"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "op",
+        "value"
+      ],
+      "title": "Predicate",
+      "type": "object"
+    },
+    "op_prep_dataset_select": {
+      "title": "prep.dataset.select",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ids"
+        },
+        "where": {
+          "description": "All predicates must hold (AND).",
+          "items": {
+            "$ref": "#/$defs/Predicate"
+          },
+          "title": "Where",
+          "type": "array"
+        },
+        "quality": {
+          "default": "any",
+          "description": "Filter by recorded assertions on the current version.",
+          "enum": [
+            "any",
+            "no_fail",
+            "pass_only"
+          ],
+          "title": "Quality",
+          "type": "string"
+        },
+        "mode": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "delete_dirs": {
+          "default": true,
+          "title": "Delete Dirs",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_dataset_split": {
+      "title": "prep.dataset.split",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "default": "random",
+          "enum": [
+            "random",
+            "parameter_holdout",
+            "group"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "fractions": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Fractions",
+          "type": "array"
+        },
+        "seed": {
+          "default": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "parameter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "parameter_holdout: which parameter.",
+          "title": "Parameter"
+        },
+        "holdout_fraction": {
+          "default": 0.15,
+          "title": "Holdout Fraction",
+          "type": "number"
+        },
+        "side": {
+          "default": "top",
+          "enum": [
+            "top",
+            "bottom"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "group_key": {
+          "default": "group",
+          "description": "group: manifest `group` (trajectory id); geometry_hash: samples with identical geometry.",
+          "enum": [
+            "group",
+            "geometry_hash"
+          ],
+          "title": "Group Key",
+          "type": "string"
+        },
+        "family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name under split_families (default: strategy).",
+          "title": "Family"
+        },
+        "activate": {
+          "default": true,
+          "title": "Activate",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_dataset_summarize": {
+      "title": "prep.dataset.summarize",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "write_card": {
+          "default": true,
+          "description": "Write CARD.md next to the manifest.",
+          "title": "Write Card",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_fields_cast_location": {
+      "title": "prep.fields.cast_location",
+      "description": "cell -> point: area-weighted average of incident faces; point -> cell: mean of the three vertices. The derived array records `derived_from` so trainers can pick the native one.",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fields to convert (default: all).",
+          "title": "Fields"
+        },
+        "to": {
+          "enum": [
+            "point",
+            "cell"
+          ],
+          "title": "To",
+          "type": "string"
+        },
+        "keep_source": {
+          "default": true,
+          "description": "Keep the native array next to the derived one.",
+          "title": "Keep Source",
+          "type": "boolean"
+        },
+        "suffix": {
+          "default": "",
+          "description": "Name suffix of the derived array (default: same name at the other location).",
+          "title": "Suffix",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to"
+      ],
+      "type": "object"
+    },
+    "op_prep_fields_components": {
+      "title": "prep.fields.components",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "reorder": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New component order, e.g. [0,2,1].",
+          "title": "Reorder"
+        },
+        "signs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-component sign/scale, e.g. [1,-1,1].",
+          "title": "Signs"
+        },
+        "split": {
+          "default": false,
+          "description": "Split into <field>_x/_y/_z scalar fields.",
+          "title": "Split",
+          "type": "boolean"
+        },
+        "merge": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Merge these scalar fields into `field`.",
+          "title": "Merge"
+        },
+        "magnitude": {
+          "default": false,
+          "description": "Also write <field>_magnitude.",
+          "title": "Magnitude",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "type": "object"
+    },
+    "op_prep_fields_map": {
+      "title": "prep.fields.map",
+      "description": "Proposes a canonical name for every field from the vocabulary (aliases, recorded units, channel count); names that are ambiguous (dynamic vs kinematic pressure) or below `min_confidence` come back as judgments and are only applied when `decisions` settles them.",
+      "additionalProperties": false,
+      "properties": {
+        "decisions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "source name -> canonical name for ambiguous or low-confidence proposals.",
+          "title": "Decisions",
+          "type": "object"
+        },
+        "min_confidence": {
+          "default": 0.75,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "apply": {
+          "default": true,
+          "description": "False: only report the proposal (plan).",
+          "title": "Apply",
+          "type": "boolean"
+        },
+        "set_units": {
+          "default": true,
+          "description": "Set the canonical unit where none is recorded.",
+          "title": "Set Units",
+          "type": "boolean"
+        },
+        "keep_unmapped": {
+          "default": true,
+          "title": "Keep Unmapped",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_fields_nan_fix": {
+      "title": "prep.fields.nan_fix",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "policy": {
+          "default": "mask",
+          "enum": [
+            "fill_value",
+            "fill_mean",
+            "mask",
+            "drop_steps",
+            "fail"
+          ],
+          "title": "Policy",
+          "type": "string"
+        },
+        "value": {
+          "default": 0.0,
+          "title": "Value",
+          "type": "number"
+        },
+        "max_frac": {
+          "default": 0.05,
+          "description": "Fail when a field has more non-finite values than this fraction.",
+          "title": "Max Frac",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_fields_normalize": {
+      "title": "prep.fields.normalize",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "split": {
+          "default": "train",
+          "description": "Statistics are fitted on this split only.",
+          "title": "Split",
+          "type": "string"
+        },
+        "method": {
+          "default": "zscore",
+          "enum": [
+            "zscore",
+            "minmax"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "write": {
+          "default": true,
+          "description": "Store under manifest.stats.normalization.",
+          "title": "Write",
+          "type": "boolean"
+        },
+        "max_steps": {
+          "default": 64,
+          "description": "Transient samples: steps used per sample (evenly spaced).",
+          "title": "Max Steps",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_fields_outlier_detect": {
+      "title": "prep.fields.outlier_detect",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "z": {
+          "default": 6.0,
+          "description": "Robust z threshold (MAD-based) per field.",
+          "title": "Z",
+          "type": "number"
+        },
+        "spatial": {
+          "default": true,
+          "description": "Also flag points whose value deviates from their mesh neighbours.",
+          "title": "Spatial",
+          "type": "boolean"
+        },
+        "spatial_z": {
+          "default": 6.0,
+          "title": "Spatial Z",
+          "type": "number"
+        },
+        "physics": {
+          "default": true,
+          "description": "Apply canonical plausibility ranges (e.g. |Cp| <= 3).",
+          "title": "Physics",
+          "type": "boolean"
+        },
+        "write_mask": {
+          "default": true,
+          "description": "Write static/<field>_outlier masks.",
+          "title": "Write Mask",
+          "type": "boolean"
+        },
+        "max_points": {
+          "default": 2000000,
+          "description": "Subsample above this for the spatial test.",
+          "title": "Max Points",
+          "type": "integer"
+        },
+        "expected_scale": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "field -> expected magnitude (p99) in the recorded unit, e.g. {'stress_vm': 3e8} for steel in Pa; a ratio off by >= 100x raises a unit_plausibility warning with the implied factor (B3: card vs data).",
+          "title": "Expected Scale",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_fields_rename": {
+      "title": "prep.fields.rename",
+      "description": "Renames `fields/<old>` / `cell_fields/<old>` to the new name in every sample and updates meta.json and the manifest. Chunks are shared with the previous version.",
+      "additionalProperties": false,
+      "properties": {
+        "map": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "old name -> new name",
+          "minProperties": 1,
+          "title": "Map",
+          "type": "object"
+        },
+        "units": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "new name -> unit string",
+          "title": "Units",
+          "type": "object"
+        },
+        "missing": {
+          "default": "skip",
+          "description": "What to do when a sample lacks a source field.",
+          "enum": [
+            "skip",
+            "fail"
+          ],
+          "title": "Missing",
+          "type": "string"
+        }
+      },
+      "required": [
+        "map"
+      ],
+      "type": "object"
+    },
+    "op_prep_fields_smooth": {
+      "title": "prep.fields.smooth",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "iterations": {
+          "default": 1,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "weight": {
+          "default": 0.5,
+          "description": "Laplacian blend: x <- (1-w) x + w mean(neighbours).",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Weight",
+          "type": "number"
+        },
+        "only_masked": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Smooth only where static/<mask> is 1 (e.g. an outlier mask).",
+          "title": "Only Masked"
+        },
+        "justification": {
+          "description": "Why smoothing is legitimate here (recorded in provenance).",
+          "minLength": 8,
+          "title": "Justification",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "justification"
+      ],
+      "type": "object"
+    },
+    "op_prep_mesh_decimate": {
+      "title": "prep.mesh.decimate",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "levels": {
+          "description": "LOD levels to (re)build.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Levels",
+          "type": "array"
+        },
+        "targets": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Level -> target face count (defaults: 1=100k, 2=20k, 3=5k).",
+          "title": "Targets"
+        },
+        "merge_seams_first": {
+          "default": true,
+          "title": "Merge Seams First",
+          "type": "boolean"
+        },
+        "max_area_change": {
+          "default": 0.001,
+          "description": "Tolerance on relative area per level.",
+          "title": "Max Area Change",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_mesh_merge_seams": {
+      "title": "prep.mesh.merge_seams",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "tolerance": {
+          "default": 0.0,
+          "description": "Merge radius (0 = exactly coincident).",
+          "minimum": 0,
+          "title": "Tolerance",
+          "type": "number"
+        },
+        "max_area_change": {
+          "default": 0.001,
+          "description": "Fail when the relative area changes more than this.",
+          "title": "Max Area Change",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_mesh_orient_outward": {
+      "title": "prep.mesh.orient_outward",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "default": "signed_volume",
+          "description": "signed_volume for closed shells; centroid: majority of normals away from the centroid (open shells).",
+          "enum": [
+            "signed_volume",
+            "centroid"
+          ],
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_mesh_part_ids": {
+      "title": "prep.mesh.part_ids",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "default": "part_id",
+          "title": "Name",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
+        "split_by_normals": {
+          "default": false,
+          "description": "Also split components where the dihedral angle exceeds `angle_deg` (patch-like parts).",
+          "title": "Split By Normals",
+          "type": "boolean"
+        },
+        "angle_deg": {
+          "default": 60.0,
+          "title": "Angle Deg",
+          "type": "number"
+        },
+        "min_faces": {
+          "default": 1,
+          "description": "Merge parts smaller than this into their largest neighbour (0 = keep all).",
+          "title": "Min Faces",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_mesh_repair": {
+      "title": "prep.mesh.repair",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "drop_degenerate": {
+          "default": true,
+          "title": "Drop Degenerate",
+          "type": "boolean"
+        },
+        "drop_duplicate_faces": {
+          "default": true,
+          "title": "Drop Duplicate Faces",
+          "type": "boolean"
+        },
+        "orient": {
+          "default": true,
+          "description": "Make face orientation consistent per component.",
+          "title": "Orient",
+          "type": "boolean"
+        },
+        "fill_holes_max_edges": {
+          "default": 0,
+          "description": "Fill boundary loops with at most this many edges (0 = off). Changes geometry; area delta recorded.",
+          "minimum": 0,
+          "title": "Fill Holes Max Edges",
+          "type": "integer"
+        },
+        "max_area_change": {
+          "default": 0.01,
+          "title": "Max Area Change",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_mesh_resample": {
+      "title": "prep.mesh.resample",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "n_points": {
+          "description": "Target point budget.",
+          "minimum": 8,
+          "title": "N Points",
+          "type": "integer"
+        },
+        "method": {
+          "default": "farthest_point",
+          "enum": [
+            "random",
+            "farthest_point",
+            "area_weighted"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "name": {
+          "default": "resample_index",
+          "description": "Name of the static index array.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "n_points"
+      ],
+      "type": "object"
+    },
+    "op_prep_mesh_transform": {
+      "title": "prep.mesh.transform",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "scale": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Uniform scale factor (alternative to from_unit/to_unit).",
+          "title": "Scale"
+        },
+        "from_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Length unit of the stored points, e.g. mm.",
+          "title": "From Unit"
+        },
+        "to_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target length unit, e.g. m.",
+          "title": "To Unit"
+        },
+        "translate": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Translate"
+        },
+        "axes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Axis permutation with signs, e.g. ['x','z','-y'] for y-up -> z-up.",
+          "title": "Axes"
+        },
+        "allow_reflection": {
+          "default": false,
+          "description": "Permit a handedness change (determinant -1).",
+          "title": "Allow Reflection",
+          "type": "boolean"
+        },
+        "vector_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Vector fields to rotate with the frame (default: every 3-component field).",
+          "title": "Vector Fields"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_mesh_watertight_check": {
+      "title": "prep.mesh.watertight_check",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "lod": {
+          "default": 0,
+          "description": "LOD level to audit (0 = full).",
+          "title": "Lod",
+          "type": "integer"
+        },
+        "fail_on_open": {
+          "default": false,
+          "description": "Fail (not warn) when open edges exist.",
+          "title": "Fail On Open",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_params_set": {
+      "title": "prep.params.set",
+      "description": "Writes `geometry_params[name]` of each sample's meta and lists the name in the manifest, so a model that conditions on it finds it.",
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "parameter -> value, set on every sample",
+          "minProperties": 1,
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
+    "op_prep_quality_check": {
+      "title": "prep.quality.check",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "mean_outlier_action": {
+          "default": "fail",
+          "description": "Severity of dataset-wide robust mean outliers. Use warn for measured sensor series with seasonal or operational shifts; finite-value, continuity and split checks remain blocking. The policy is recorded with each outlier assertion.",
+          "enum": [
+            "fail",
+            "warn"
+          ],
+          "title": "Mean Outlier Action",
+          "type": "string"
+        },
+        "write_report": {
+          "default": true,
+          "description": "Write quality/report.json and report.html.",
+          "title": "Write Report",
+          "type": "boolean"
+        },
+        "frame_hashes": {
+          "default": true,
+          "description": "Hash the first frame of transient samples to find duplicated initial conditions.",
+          "title": "Frame Hashes",
+          "type": "boolean"
+        },
+        "html": {
+          "default": true,
+          "title": "Html",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_quality_gate": {
+      "title": "prep.quality.gate",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Checks that must have been recorded (closure checks first). Default: the checks that apply to the dataset: area_sum for surfaces, force_consistency and force_closure when samples carry forces, temporal_continuity for transient data, mesh_cells for steady meshes, and predictable_fields, nan_inf and split_leakage for every dataset.",
+          "title": "Required"
+        },
+        "closure_required": {
+          "default": true,
+          "description": "At least one closure check (force/area/continuity/frame hash) must be present and not failing.",
+          "title": "Closure Required",
+          "type": "boolean"
+        },
+        "allow_warn": {
+          "default": true,
+          "description": "warn statuses do not block.",
+          "title": "Allow Warn",
+          "type": "boolean"
+        },
+        "max_fail_frac": {
+          "default": 0.0,
+          "description": "Fraction of samples with failing checks tolerated (0 = none).",
+          "title": "Max Fail Frac",
+          "type": "number"
+        },
+        "tag": {
+          "default": "train-ready",
+          "title": "Tag",
+          "type": "string"
+        },
+        "approver": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Record a human approval with the tag.",
+          "title": "Approver"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_scalars_derive": {
+      "title": "prep.scalars.derive",
+      "description": "Cd = 2 (∫ p n·d dA - ∫ τ·d dA) / (rho U² A_ref). Kinematic fields are multiplied by rho. The result goes to forces.json under `derived` next to the reported values, and the relative disagreement is an assertion (`force_closure`).",
+      "additionalProperties": false,
+      "properties": {
+        "derive": {
+          "items": {
+            "enum": [
+              "cd",
+              "cl",
+              "cs",
+              "forces",
+              "cp",
+              "cf"
+            ],
+            "type": "string"
+          },
+          "title": "Derive",
+          "type": "array"
+        },
+        "pressure": {
+          "default": "pressure",
+          "description": "Pressure field name.",
+          "title": "Pressure",
+          "type": "string"
+        },
+        "wall_shear_stress": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "wall_shear_stress",
+          "title": "Wall Shear Stress"
+        },
+        "pressure_kind": {
+          "default": "auto",
+          "enum": [
+            "dynamic",
+            "kinematic",
+            "auto"
+          ],
+          "title": "Pressure Kind",
+          "type": "string"
+        },
+        "gauge": {
+          "default": true,
+          "description": "Subtract p_inf before integrating (needed on open surfaces).",
+          "title": "Gauge",
+          "type": "boolean"
+        },
+        "p_inf": {
+          "default": 0.0,
+          "title": "P Inf",
+          "type": "number"
+        },
+        "rho": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Density; default from meta.conditions.rho.",
+          "title": "Rho"
+        },
+        "u_inf": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free-stream speed; default meta.conditions.u_inf.",
+          "title": "U Inf"
+        },
+        "reference_area": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A_ref; default meta.conditions.reference_area.",
+          "title": "Reference Area"
+        },
+        "drag_dir": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Drag Dir",
+          "type": "array"
+        },
+        "lift_dir": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Lift Dir",
+          "type": "array"
+        },
+        "side_dir": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Side Dir",
+          "type": "array"
+        },
+        "axes": {
+          "default": "wind",
+          "description": "wind: drag along the free stream and lift normal to it, the directions above turned by the angle of attack (meta.conditions.alpha, degrees, drag towards lift) and sideslip (beta, drag towards side); what a solver reports for a lifting body. body: the directions as given.",
+          "enum": [
+            "wind",
+            "body"
+          ],
+          "title": "Axes",
+          "type": "string"
+        },
+        "compare_with": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "derived key -> forces.json key to compare against (closure check).",
+          "title": "Compare With",
+          "type": "object"
+        },
+        "tolerance": {
+          "default": 0.02,
+          "description": "Relative closure tolerance for the assertion.",
+          "title": "Tolerance",
+          "type": "number"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Transient surfaces: time step to integrate (default: last step).",
+          "title": "Step"
+        },
+        "normals": {
+          "default": "auto",
+          "description": "Face-normal convention: OpenFOAM patches point out of the fluid (into the body), CAD/Luminary exports point outward; auto decides from the signed volume and records the choice.",
+          "enum": [
+            "auto",
+            "into_body",
+            "outward"
+          ],
+          "title": "Normals",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_time_align": {
+      "title": "prep.time.align",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "both",
+          "enum": [
+            "shift_t0",
+            "common_length",
+            "both"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "t0": {
+          "default": 0.0,
+          "description": "shift_t0: new first time stamp.",
+          "title": "T0",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_time_continuity_check": {
+      "title": "prep.time.continuity_check",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "jump_z": {
+          "default": 6.0,
+          "description": "Robust z of the log step change vs its neighbours.",
+          "title": "Jump Z",
+          "type": "number"
+        },
+        "jump_ratio": {
+          "default": 4.0,
+          "description": "Step change must also exceed this multiple of the neighbours' median.",
+          "title": "Jump Ratio",
+          "type": "number"
+        },
+        "fail_ratio": {
+          "default": 20.0,
+          "description": "Fail when a jump exceeds this multiple.",
+          "title": "Fail Ratio",
+          "type": "number"
+        },
+        "write_signal": {
+          "default": true,
+          "description": "Store the relative step change as signals/continuity_<field>.",
+          "title": "Write Signal",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_time_drop_duplicate_frames": {
+      "title": "prep.time.drop_duplicate_frames",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "adjacent_only": {
+          "default": true,
+          "description": "Only drop a frame identical to its predecessor (restart overlaps); False drops any repeat.",
+          "title": "Adjacent Only",
+          "type": "boolean"
+        },
+        "keep": {
+          "default": "first",
+          "enum": [
+            "first",
+            "last"
+          ],
+          "title": "Keep",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_time_subsample": {
+      "title": "prep.time.subsample",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "stride": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Keep every k-th step.",
+          "title": "Stride"
+        },
+        "max_steps": {
+          "anyOf": [
+            {
+              "minimum": 2,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Keep at most this many (evenly spaced).",
+          "title": "Max Steps"
+        },
+        "target_dt": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Keep steps closest to a uniform grid of this dt.",
+          "title": "Target Dt"
+        },
+        "start": {
+          "default": 0,
+          "description": "First step kept.",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Last step (exclusive).",
+          "title": "End"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_time_trim": {
+      "title": "prep.time.trim",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "default": "stationarity",
+          "enum": [
+            "stationarity",
+            "explicit"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "start": {
+          "default": 0,
+          "description": "explicit: first kept step.",
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Field whose spatial mean/RMS drives the burn-in test (default: first field).",
+          "title": "Field"
+        },
+        "min_remaining": {
+          "default": 16,
+          "description": "Never trim below this many steps.",
+          "title": "Min Remaining",
+          "type": "integer"
+        },
+        "max_burn_in_frac": {
+          "default": 0.5,
+          "title": "Max Burn In Frac",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_time_window_average": {
+      "title": "prep.time.window_average",
+      "description": "",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "start": {
+          "default": 0,
+          "description": "First step of the window (after burn-in).",
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "suffix": {
+          "default": "_mean",
+          "title": "Suffix",
+          "type": "string"
+        },
+        "rms": {
+          "default": false,
+          "description": "Also write <field>_rms (fluctuation RMS).",
+          "title": "Rms",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "op_prep_units_convert": {
+      "title": "prep.units.convert",
+      "description": "Each conversion is `field -> target unit`. The source unit is the field's recorded unit or `from_units[field]`. Optional `multiply_by[field]` factors (density, velocity, length) are checked dimensionally: source * factors must have the target's dimension. The declared unit, the factor and the method are recorded in meta.extra.fields.",
+      "additionalProperties": false,
+      "properties": {
+        "conversions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "field -> target unit (pint spelling: Pa, MPa, m/s, mm, ...)",
+          "minProperties": 1,
+          "title": "Conversions",
+          "type": "object"
+        },
+        "from_units": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "field -> source unit when meta has none or the card is wrong (recorded as `declared`).",
+          "title": "From Units",
+          "type": "object"
+        },
+        "multiply_by": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "description": "field -> {reference: value} factors with units from `reference_units`, e.g. {'pressure': {'rho': 1.225}}.",
+          "title": "Multiply By",
+          "type": "object"
+        },
+        "reference_units": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Reference Units",
+          "type": "object"
+        },
+        "rename": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Rename after converting (e.g. kinematic -> dynamic form).",
+          "title": "Rename",
+          "type": "object"
+        },
+        "geometry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Also scale points by this length unit conversion, e.g. 'm' when points are in mm (uses from_units['points']).",
+          "title": "Geometry"
+        }
+      },
+      "required": [
+        "conversions"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "version": {
+      "default": "1.0",
+      "title": "Version",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "created_by": {
+      "$ref": "#/$defs/Actor"
+    },
+    "created_at": {
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_from": {
+      "additionalProperties": true,
+      "title": "Created From",
+      "type": "object"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}

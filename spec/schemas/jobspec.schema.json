@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/jobspec.schema.json",
+  "title": "Frontier JobSpec",
+  "x-frontier-hand-maintained": true,
+  "description": "A JobSpec as submitted to POST /api/v1/jobs (`{\"spec\": JobSpec}`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "image",
+    "command",
+    "backend"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "image": {
+      "type": "string"
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpus": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        },
+        "gpu_type": {
+          "type": "string",
+          "default": "any"
+        },
+        "cpus": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8
+        },
+        "memory_gb": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 32
+        }
+      }
+    },
+    "mounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "uri",
+          "path"
+        ],
+        "properties": {
+          "uri": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "backend": {
+      "type": "string",
+      "enum": [
+        "local",
+        "runpod",
+        "anyscale",
+        "slurm",
+        "k8s"
+      ]
+    },
+    "compute": {}
+  }
+}

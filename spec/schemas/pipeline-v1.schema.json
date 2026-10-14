@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dimensionlab.org/schemas/pipeline-v1.schema.json",
+  "title": "Frontier canvas pipeline v1",
+  "x-frontier-hand-maintained": true,
+  "description": "A node pipeline exported from the canvas (`frontier-pipeline` v1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "name",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "format": {
+      "const": "frontier-pipeline"
+    },
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "position": {
+            "type": "object",
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "from_port",
+          "to",
+          "to_port"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "from_port": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "to_port": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
