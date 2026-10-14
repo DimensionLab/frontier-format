@@ -42,27 +42,27 @@ print(result.output_version, op.explain(result).steps)
 Every command prints JSON with `--json`. Exit codes: 0 ok, 1 error, 2 blocked (a plan has a
 `fail` warning, the gate fails or a recipe step fails).
 
-| Command | What it does |
-|---|---|
-| `ops list`, `ops show <op>` | List ops; show the description and parameters of one |
-| `plan <op> -d <dataset>` | List the changes, warnings and open questions without running |
-| `preview <op> -d <dataset>` | Apply the op to a few samples in a temporary copy and show the differences |
-| `run <op> -d <dataset>` | Run the op and record a new dataset version |
-| `explain -d <dataset>` | Show the op, parameters and assertions that produced a version |
-| `recipe run`, `recipe diff`, `recipe show` | Replay, plan or print a recipe recorded with `run --record` |
-| `versions <command> <dataset>` | `log`, `diff`, `revert`, `lineage`, `tag`, `approve`, `gc`, `export-prov` |
-| `ops export-tools` | Export the ops as tool definitions for an agent |
+| Command                                    | What it does                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| `ops list`, `ops show <op>`                | List ops; show the description and parameters of one                       |
+| `plan <op> -d <dataset>`                   | List the changes, warnings and open questions without running              |
+| `preview <op> -d <dataset>`                | Apply the op to a few samples in a temporary copy and show the differences |
+| `run <op> -d <dataset>`                    | Run the op and record a new dataset version                                |
+| `explain -d <dataset>`                     | Show the op, parameters and assertions that produced a version             |
+| `recipe run`, `recipe diff`, `recipe show` | Replay, plan or print a recipe recorded with `run --record`                |
+| `versions <command> <dataset>`             | `log`, `diff`, `revert`, `lineage`, `tag`, `approve`, `gc`, `export-prov`  |
+| `ops export-tools`                         | Export the ops as tool definitions for an agent                            |
 
 ## Ops
 
-| Category | Ops |
-|---|---|
-| fields | `rename`, `map`, `cast_location`, `components`, `nan_fix`, `outlier_detect`, `smooth`, `normalize` |
-| units, scalars | `units.convert`, `scalars.derive` |
-| mesh | `watertight_check`, `merge_seams`, `repair`, `orient_outward`, `transform`, `decimate`, `resample`, `part_ids` |
-| time | `subsample`, `trim`, `align`, `drop_duplicate_frames`, `window_average`, `continuity_check` |
-| dataset | `dedup`, `split`, `coverage`, `balance`, `select`, `merge`, `summarize` |
-| quality | `check`, `gate` (sets the `train-ready` tag when the required checks pass) |
+| Category       | Ops                                                                                                            |
+| -------------- | -------------------------------------------------------------------------------------------------------------- |
+| fields         | `rename`, `map`, `cast_location`, `components`, `nan_fix`, `outlier_detect`, `smooth`, `normalize`             |
+| units, scalars | `units.convert`, `scalars.derive`                                                                              |
+| mesh           | `watertight_check`, `merge_seams`, `repair`, `orient_outward`, `transform`, `decimate`, `resample`, `part_ids` |
+| time           | `subsample`, `trim`, `align`, `drop_duplicate_frames`, `window_average`, `continuity_check`                    |
+| dataset        | `dedup`, `split`, `coverage`, `balance`, `select`, `merge`, `summarize`                                        |
+| quality        | `check`, `gate` (sets the `train-ready` tag when the required checks pass)                                     |
 
 Op ids are `prep.<category>.<name>`, for example `prep.fields.map`. To add an op, subclass
 `frontier_prep.base.BaseOp`, register it with `@register` and publish it under the entry-point

@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Frontier control-plane API and job specification
 
 The wire contract spoken by the SDK, the worker and the app.
@@ -205,16 +206,30 @@ of 4 | payload`, so every typed array in the payload is 4-byte aligned.
  "n_points": 23011, "n_faces": 20000, "n_full_points": 376593, "dim": 3, "moving": true,
  "bounds": [xmin, xmax, ymin, ymax, zmin, zmax], "positions_bytes": 276132, "indices_bytes": 240000}
 ```
+
 payload: `positions f32[n_points * 3]` (step 0) then `indices u32[n_faces * 3]`.
 
 `GET .../frames?t=<a>[-<b>]&fields=<f1,f2>&lod=<L>&component=<mag|index>` ->
 `application/vnd.frontier.frames`, magic `FRM1`:
 
 ```jsonc
-{"version": 1, "sample_id": "...", "lod": 2, "n_points": 23011, "n_faces": 20000, "moving": true,
- "fields": ["stress_vm"], "t": [3, 4, 5], "times": [0.03, 0.04, 0.05], "n_steps": 13,
- "frame_bytes": 368176, "positions_bytes": 276132, "scalar_bytes": 92044}
+{
+  "version": 1,
+  "sample_id": "...",
+  "lod": 2,
+  "n_points": 23011,
+  "n_faces": 20000,
+  "moving": true,
+  "fields": ["stress_vm"],
+  "t": [3, 4, 5],
+  "times": [0.03, 0.04, 0.05],
+  "n_steps": 13,
+  "frame_bytes": 368176,
+  "positions_bytes": 276132,
+  "scalar_bytes": 92044,
+}
 ```
+
 payload, per step of `t` in order: `positions f32[n_points * 3]` when `moving`, then one
 `f32[n_points]` per entry of `fields` (one scalar per vertex: vectors reduced by
 `component`, default magnitude; cell values averaged onto the vertices). A request is
@@ -223,7 +238,7 @@ refused with 400 when it would exceed 96 MB (ask for fewer steps). `t` past the 
 
 Levels of detail: surface stores serve the levels they carry (`lod/<L>/`). Mesh stores
 serve level 0 (the drawable surface of the cells) and, when the surface has more
-triangles than a level's target (1: 100k, 2: 20k, 3: 5k), levels 1-3 as *vertex maps*:
+triangles than a level's target (1: 100k, 2: 20k, 3: 5k), levels 1-3 as _vertex maps_:
 `lod/<L>/{points,faces,vertex_map}` written at ingest by `frontier_data` (also added to
 existing datasets by `python -m frontier_data mesh-lods <dataset>`), else built on the
 fly by vertex clustering on first use and cached in memory. Per-step positions and
@@ -242,15 +257,15 @@ remote users.
 
 ### Project lifecycle, example projects, per-user state
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/v1/projects/{id}/deletion` | What a delete would remove: `{project, confirm: <name>, removes: {boards: [{id, name}], runs: [{id, name}], artifacts, jobs, datasets_deleted: [{id, name, path}], datasets_unregistered: [...], dataset_references, bytes}, active_jobs, blocked: <reason> \| null}`. `datasets_deleted` are owned datasets stored under the project's own directory (`<data dir>/projects/<id>`); an owned dataset stored elsewhere is only unregistered and its files stay |
-| POST | `/api/v1/projects/{id}/delete` | `{confirm: <the project's name>}` -> the same body with `deleted: true`, `deleted_by`, `files_not_removed`. Removes the project's boards and their history, runs with metrics and artifacts, jobs with logs, pipeline runs with their work directories, agent sessions, project-scoped credentials, members, the datasets above and the project's directory. 400 when `confirm` is not the name; 409 while a job of the project is queued or running, and for the default project |
-| POST | `/api/v1/projects/{id}/archive`, `.../unarchive` | `{id, name, archived, archived_at}`. An archived project keeps everything; `summary.meta.archived_at` is set and the app lists it under *Archived*. 409 for the default project |
-| GET | `/api/v1/examples` | `{examples: [{id, title, summary, minutes, dataset: {samples, bytes, licence, licence_url, attribution}, stages: [{id, title, step}], pipeline: {source, ref, recipe, config, epochs, overrides, loss_keys, error_keys}}]}`: the examples of the `frontier-examples` Python package in the job interpreter (`compute.python`). The server asks the interpreter once where the package data is (or reads `FRONTIER_EXAMPLES_DIR`) and reads `catalog.json` there on each request. `pipeline` is what a board needs to run on the example's sample; `recipe` is the recipe's JSON text. Empty when the package is not installed. A server built with `--no-default-features` (no `examples` feature) has none of the three example routes |
-| POST | `/api/v1/projects/from-example` | `{example, name?}` -> 201 `{id, project, board_id, example: Marker}`. An ordinary project (`meta.template = "example:<id>"`) whose main board is an ordinary pipeline: Import (`source: "example"`), Recipe (the example's recipe in the node's `text`), Training run, Evaluate, Report, wired in that order, with a dataset card, viewers and plots. A taken name gets a number. Nothing runs and no dataset exists yet |
-| GET | `/api/v1/projects/{id}/example` | `Marker`: `{example, title, dataset, available, project_id, stages: [{id, title, step}]}`: which example the project was made from and which step of its main board each stage of the app's guide runs. 404 for a project that was not made from an example. The state of the stages is the state of the board's pipeline run; a stage is run with `POST /projects/{id}/boards/{board}/runs {range: {from: <step>, to: <step>}}` |
-| GET, PUT | `/api/v1/me/state/{key}` | Small per-user interface state (which onboarding steps were finished): `{key, value}`; `value` is any JSON up to 16 KiB, `null` when unset. Keyed by the caller's user id |
+| Method   | Path                                             | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/api/v1/projects/{id}/deletion`                 | What a delete would remove: `{project, confirm: <name>, removes: {boards: [{id, name}], runs: [{id, name}], artifacts, jobs, datasets_deleted: [{id, name, path}], datasets_unregistered: [...], dataset_references, bytes}, active_jobs, blocked: <reason> \| null}`. `datasets_deleted` are owned datasets stored under the project's own directory (`<data dir>/projects/<id>`); an owned dataset stored elsewhere is only unregistered and its files stay                                                                                                                                                                                                                                                                           |
+| POST     | `/api/v1/projects/{id}/delete`                   | `{confirm: <the project's name>}` -> the same body with `deleted: true`, `deleted_by`, `files_not_removed`. Removes the project's boards and their history, runs with metrics and artifacts, jobs with logs, pipeline runs with their work directories, agent sessions, project-scoped credentials, members, the datasets above and the project's directory. 400 when `confirm` is not the name; 409 while a job of the project is queued or running, and for the default project                                                                                                                                                                                                                                                       |
+| POST     | `/api/v1/projects/{id}/archive`, `.../unarchive` | `{id, name, archived, archived_at}`. An archived project keeps everything; `summary.meta.archived_at` is set and the app lists it under _Archived_. 409 for the default project                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| GET      | `/api/v1/examples`                               | `{examples: [{id, title, summary, minutes, dataset: {samples, bytes, licence, licence_url, attribution}, stages: [{id, title, step}], pipeline: {source, ref, recipe, config, epochs, overrides, loss_keys, error_keys}}]}`: the examples of the `frontier-examples` Python package in the job interpreter (`compute.python`). The server asks the interpreter once where the package data is (or reads `FRONTIER_EXAMPLES_DIR`) and reads `catalog.json` there on each request. `pipeline` is what a board needs to run on the example's sample; `recipe` is the recipe's JSON text. Empty when the package is not installed. A server built with `--no-default-features` (no `examples` feature) has none of the three example routes |
+| POST     | `/api/v1/projects/from-example`                  | `{example, name?}` -> 201 `{id, project, board_id, example: Marker}`. An ordinary project (`meta.template = "example:<id>"`) whose main board is an ordinary pipeline: Import (`source: "example"`), Recipe (the example's recipe in the node's `text`), Training run, Evaluate, Report, wired in that order, with a dataset card, viewers and plots. A taken name gets a number. Nothing runs and no dataset exists yet                                                                                                                                                                                                                                                                                                                |
+| GET      | `/api/v1/projects/{id}/example`                  | `Marker`: `{example, title, dataset, available, project_id, stages: [{id, title, step}]}`: which example the project was made from and which step of its main board each stage of the app's guide runs. 404 for a project that was not made from an example. The state of the stages is the state of the board's pipeline run; a stage is run with `POST /projects/{id}/boards/{board}/runs {range: {from: <step>, to: <step>}}`                                                                                                                                                                                                                                                                                                        |
+| GET, PUT | `/api/v1/me/state/{key}`                         | Small per-user interface state (which onboarding steps were finished): `{key, value}`; `value` is any JSON up to 16 KiB, `null` when unset. Keyed by the caller's user id                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Permissions: the deletion preview, delete, archive and unarchive need `members.manage` in
 the project (maintainer); `from-example` needs `projects.write`; `/me/state` any signed-in
@@ -259,23 +274,23 @@ caller. All changes are audited
 
 ### Pipeline runs of a board (`docs/spec/pipeline-run-events.md`)
 
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/api/v1/projects/{id}/boards/{board}/runs` | `{pipeline?, range?: {from?, to?}, backend?, compute?}` -> 201 `{run, job?, state}`. Runs the board's steps as one job (`pipeline` absent: the stored board's); `range.to` is the last step that may run; with `range.from`, that step and what is downstream of it run and steps upstream are reused by fingerprint (`cached`). 400 when the board has no steps, the steps form a cycle or `from` is not a step |
-| GET | `/api/v1/projects/{id}/boards/{board}/runs` | `?limit=` -> `[RunSummary]`, newest first; the first is the board's active run |
-| GET | `/api/v1/projects/{id}/pipeline-runs` | `?active=true&limit=` -> `[RunSummary]` of the project (`active`: not finished) |
-| GET | `/api/v1/projects/{id}/pipeline-runs/{run}` | `{summary, state}`; `state` is the fold of the log: `{run, seq, steps: {<id>: {state, attempt, started_at, changed_at, progress, message, error, outputs, metrics, since_seq, ...}}, order, finished, ...}` |
-| GET | `/api/v1/projects/{id}/pipeline-runs/{run}/events` | `?since=<seq>` -> `[Event]`. With `Accept: text/event-stream`: server-sent events, one message per event (`id: <seq>`, the event as `data`), from `since` or `Last-Event-ID`, live until `run.finished`, then `event: end` |
-| POST | `/api/v1/projects/{id}/pipeline-runs/{run}/cancel` | cancels the run's job; open steps become `cancelled`. 409 when the run has ended |
-| POST | `/api/v1/projects/{id}/pipeline-runs/{run}/fork` | `{seq?, backend?, compute?}` -> 201 `{run, parent: {run, seq}, job?, state}`: a new run whose log starts with events 1..`seq` of this one and continues from that state under this run's plan. 409 when the run had ended by that event, 400 when it has no such event |
-| POST | `/api/v1/projects/{id}/pipeline-runs/{run}/rerun` | `{seq?, pipeline?, document?, backend?, compute?}` -> 201 `{run, job?, state}`: a new run of the board as it is now; steps whose fingerprint had succeeded by event `seq` of this run start `cached` (cause `rerun`) |
-| POST | `/api/v1/projects/{id}/pipeline-runs/{run}/archive`, `…/unarchive` | -> `RunSummary`. Archive hides an ended run from the lists (`?archived=true\|only` on the two list routes shows them); 409 while the run is going; 403 for a run of someone else without `runs.delete` |
-| GET | `/api/v1/projects/{id}/pipeline-runs/{run}/snapshot` | `{summary, document, plan: {steps, edges}, range, state, datasets, runs, predictions, compute}`: the board document the run was started from, its plan with every step's parameters, the fold at its head, what its steps bound and where it ran, for comparing runs |
-| GET | `/api/v1/projects/{id}/pipeline-runs/{run}/deletion` | `{run, archived, removes: {events, work_files}, outputs_kept: [{kind, id, version, referenced_by}], outputs_unused: [{kind, id, name}], continued_by, blocked}` |
-| DELETE | `/api/v1/projects/{id}/pipeline-runs/{run}` | `?outputs=unused`. Needs `runs.delete`; 409 unless archived. Removes the log and work files and leaves a tombstone; keeps what the run produced, or with `outputs=unused` also deletes `outputs_unused` of the preview |
-| GET | `/api/v1/projects/{id}/boards/{board}/runs/deleted` | the board's tombstones: `[{run, state, created_by, created_at, deleted_by, at, parent, removed}]` |
-| POST | `/api/v1/projects/{id}/pipeline-runs/{run}/restore-board` | -> `{board, run}`: the board document the run was started from becomes the board's newest version; 404 when it is no longer kept |
-| GET | `/api/v1/projects/{id}/pipeline-runs/{run}/steps/{step}/log` | `?tail=200` -> `{lines, first_line, running}`: the step's part of the job's log (event lines left out), live while it runs. Needs `jobs.read` |
+| Method | Path                                                               | Notes                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/v1/projects/{id}/boards/{board}/runs`                        | `{pipeline?, range?: {from?, to?}, backend?, compute?}` -> 201 `{run, job?, state}`. Runs the board's steps as one job (`pipeline` absent: the stored board's); `range.to` is the last step that may run; with `range.from`, that step and what is downstream of it run and steps upstream are reused by fingerprint (`cached`). 400 when the board has no steps, the steps form a cycle or `from` is not a step |
+| GET    | `/api/v1/projects/{id}/boards/{board}/runs`                        | `?limit=` -> `[RunSummary]`, newest first; the first is the board's active run                                                                                                                                                                                                                                                                                                                                   |
+| GET    | `/api/v1/projects/{id}/pipeline-runs`                              | `?active=true&limit=` -> `[RunSummary]` of the project (`active`: not finished)                                                                                                                                                                                                                                                                                                                                  |
+| GET    | `/api/v1/projects/{id}/pipeline-runs/{run}`                        | `{summary, state}`; `state` is the fold of the log: `{run, seq, steps: {<id>: {state, attempt, started_at, changed_at, progress, message, error, outputs, metrics, since_seq, ...}}, order, finished, ...}`                                                                                                                                                                                                      |
+| GET    | `/api/v1/projects/{id}/pipeline-runs/{run}/events`                 | `?since=<seq>` -> `[Event]`. With `Accept: text/event-stream`: server-sent events, one message per event (`id: <seq>`, the event as `data`), from `since` or `Last-Event-ID`, live until `run.finished`, then `event: end`                                                                                                                                                                                       |
+| POST   | `/api/v1/projects/{id}/pipeline-runs/{run}/cancel`                 | cancels the run's job; open steps become `cancelled`. 409 when the run has ended                                                                                                                                                                                                                                                                                                                                 |
+| POST   | `/api/v1/projects/{id}/pipeline-runs/{run}/fork`                   | `{seq?, backend?, compute?}` -> 201 `{run, parent: {run, seq}, job?, state}`: a new run whose log starts with events 1..`seq` of this one and continues from that state under this run's plan. 409 when the run had ended by that event, 400 when it has no such event                                                                                                                                           |
+| POST   | `/api/v1/projects/{id}/pipeline-runs/{run}/rerun`                  | `{seq?, pipeline?, document?, backend?, compute?}` -> 201 `{run, job?, state}`: a new run of the board as it is now; steps whose fingerprint had succeeded by event `seq` of this run start `cached` (cause `rerun`)                                                                                                                                                                                             |
+| POST   | `/api/v1/projects/{id}/pipeline-runs/{run}/archive`, `…/unarchive` | -> `RunSummary`. Archive hides an ended run from the lists (`?archived=true\|only` on the two list routes shows them); 409 while the run is going; 403 for a run of someone else without `runs.delete`                                                                                                                                                                                                           |
+| GET    | `/api/v1/projects/{id}/pipeline-runs/{run}/snapshot`               | `{summary, document, plan: {steps, edges}, range, state, datasets, runs, predictions, compute}`: the board document the run was started from, its plan with every step's parameters, the fold at its head, what its steps bound and where it ran, for comparing runs                                                                                                                                             |
+| GET    | `/api/v1/projects/{id}/pipeline-runs/{run}/deletion`               | `{run, archived, removes: {events, work_files}, outputs_kept: [{kind, id, version, referenced_by}], outputs_unused: [{kind, id, name}], continued_by, blocked}`                                                                                                                                                                                                                                                  |
+| DELETE | `/api/v1/projects/{id}/pipeline-runs/{run}`                        | `?outputs=unused`. Needs `runs.delete`; 409 unless archived. Removes the log and work files and leaves a tombstone; keeps what the run produced, or with `outputs=unused` also deletes `outputs_unused` of the preview                                                                                                                                                                                           |
+| GET    | `/api/v1/projects/{id}/boards/{board}/runs/deleted`                | the board's tombstones: `[{run, state, created_by, created_at, deleted_by, at, parent, removed}]`                                                                                                                                                                                                                                                                                                                |
+| POST   | `/api/v1/projects/{id}/pipeline-runs/{run}/restore-board`          | -> `{board, run}`: the board document the run was started from becomes the board's newest version; 404 when it is no longer kept                                                                                                                                                                                                                                                                                 |
+| GET    | `/api/v1/projects/{id}/pipeline-runs/{run}/steps/{step}/log`       | `?tail=200` -> `{lines, first_line, running}`: the step's part of the job's log (event lines left out), live while it runs. Needs `jobs.read`                                                                                                                                                                                                                                                                    |
 
 Permissions: reads need `projects.read` in the project, submit, fork and re-run
 `jobs.submit`, cancel `jobs.cancel`, restore-board `runs.write` (as restoring a board
@@ -290,15 +305,15 @@ Run a model on samples as a background job and keep the predictions. It does not
 and does not draw: an evaluation scores predictions, viewers show them. Every route is
 under the project.
 
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/api/v1/projects/{id}/inference` | `{model: {source: "run" \| "package", ref, checkpoint?: "best" \| "last"}, samples?: {dataset?, split?, ids?: [..], first?}, compute?, backend?, notify?: {url}, allow_ungated?, board?, node?}` -> 201 `Inference`. `model.ref` is a run id of the project (its `best.pt` or `last.pt` artifact) or `name@version` of the model registry (`version`: a version, a stage or `latest`; a `frontier-model` v1 package). `samples.dataset` is a dataset id or name; left out, the dataset the run was trained on. 400 for an unknown source, a run without a checkpoint or no dataset; 404 for a run of another project; 403 `blocked_by_policy` for `notify` while `policy.inference.webhooks` is off or the host is not in `policy.inference.webhook_hosts` |
-| GET | `/api/v1/projects/{id}/inference` | `?board=&node=&limit=50` -> `[Inference]`, newest first |
-| GET | `/api/v1/projects/{id}/inference/{inf}` | `Inference` (poll this, or use the stream) |
-| GET | `/api/v1/projects/{id}/inference/{inf}/events` | server-sent events: the `Inference` as `data` now and at each change of state, then `event: end` |
-| POST | `/api/v1/projects/{id}/inference/{inf}/cancel` | cancels the job -> `Inference`; 409 once it ended |
-| GET | `/api/v1/projects/{id}/inference/{inf}/predictions` | `{inference, run_id, state, manifest, samples: [{sample_id, formats, url, viewer}]}`; `manifest` is the predictions' `manifest.json` (null until written) |
-| GET | `/api/v1/projects/{id}/inference/{inf}/predictions/{sid}` | `?format=arrow` (default; the Arrow stream as written), `vtk` (legacy PolyData, ASCII: points, triangles, each `field:<name>` as point or cell scalars; opens in ParaView) or `zarr` (a tar of the sample's store, for transient predictions). 404 when the sample has no file in that format |
+| Method | Path                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------ | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/v1/projects/{id}/inference`                         | `{model: {source: "run" \| "package", ref, checkpoint?: "best" \| "last"}, samples?: {dataset?, split?, ids?: [..], first?}, compute?, backend?, notify?: {url}, allow_ungated?, board?, node?}` -> 201 `Inference`. `model.ref` is a run id of the project (its `best.pt` or `last.pt` artifact) or `name@version` of the model registry (`version`: a version, a stage or `latest`; a `frontier-model` v1 package). `samples.dataset` is a dataset id or name; left out, the dataset the run was trained on. 400 for an unknown source, a run without a checkpoint or no dataset; 404 for a run of another project; 403 `blocked_by_policy` for `notify` while `policy.inference.webhooks` is off or the host is not in `policy.inference.webhook_hosts` |
+| GET    | `/api/v1/projects/{id}/inference`                         | `?board=&node=&limit=50` -> `[Inference]`, newest first                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| GET    | `/api/v1/projects/{id}/inference/{inf}`                   | `Inference` (poll this, or use the stream)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| GET    | `/api/v1/projects/{id}/inference/{inf}/events`            | server-sent events: the `Inference` as `data` now and at each change of state, then `event: end`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| POST   | `/api/v1/projects/{id}/inference/{inf}/cancel`            | cancels the job -> `Inference`; 409 once it ended                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| GET    | `/api/v1/projects/{id}/inference/{inf}/predictions`       | `{inference, run_id, state, manifest, samples: [{sample_id, formats, url, viewer}]}`; `manifest` is the predictions' `manifest.json` (null until written)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| GET    | `/api/v1/projects/{id}/inference/{inf}/predictions/{sid}` | `?format=arrow` (default; the Arrow stream as written), `vtk` (legacy PolyData, ASCII: points, triangles, each `field:<name>` as point or cell scalars; opens in ParaView) or `zarr` (a tar of the sample's store, for transient predictions). 404 when the sample has no file in that format                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 `Inference`: `{id, project_id, run_id, job_id, state: queued | running | succeeded | failed |
 cancelled, model, samples, cause: {kind: user | trigger, rule?, by?, board?, node?,
@@ -357,23 +372,23 @@ runtime loads the models once, binds a port and reports where it answers with on
 `frontier-event: {"type": "service.ready", "data": {url, name, version, model, task}}` line
 in its log. Editing the board changes nothing until "Deploy new version".
 
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/api/v1/projects/{id}/services` | `{board?, name?, document?, config?, start?}` -> 201 `Service`. `board` an id or `default`; `document` the board as the app has it (absent: the stored board); `name` the service name (absent: the Request node's `name`, else the board's name as a slug; `[a-z0-9-]{1,63}`, unique on the server). 400 when the board has no Request or Response node or its Inference step names no model; 409 when the name is taken |
-| GET | `/api/v1/projects/{id}/services`, `/api/v1/services` | `[Service]`; the server-wide list adds `latency: {p50_ms, p95_ms, in_flight, calls, errors, window}` and leaves the schema out |
-| GET | `/api/v1/projects/{id}/services/{svc}` | `Service`; `{svc}` an id or name |
-| DELETE | `/api/v1/projects/{id}/services/{svc}` | 409 while it is starting, running or stopping |
-| POST | `/api/v1/projects/{id}/services/{svc}/start` | queues the runtime's job -> `Service` with state `starting`; 409 when it is up |
-| POST | `/api/v1/projects/{id}/services/{svc}/stop` | cancels the job and releases the worker -> `Service` (`stopped`) |
-| POST | `/api/v1/projects/{id}/services/{svc}/deploy` | `{document?, config?}`: a new snapshot from the board as it is now, `version` + 1; a running service is restarted on it |
-| GET | `/api/v1/projects/{id}/services/{svc}/status` | the `Service` with `pending_reason` (why its job waits), `health` (the runtime's own, when it is up) and `latency` |
-| GET | `/api/v1/projects/{id}/services/{svc}/metrics` | `{requests, errors, p50_ms, p95_ms, in_flight, calls, window, last_request_at, state, version, started_at}` |
-| POST | `/api/v1/projects/{id}/services/{svc}/tokens` | `{name?, expires_in_days?}` -> 201 `{token, info, scope, endpoint}`: a token on the caller's account with the one scope `service:<name>`; 409 in single-user mode |
-| POST | `/svc/{name}[?format=json\|arrow\|vtk\|npz&async=1&files=1]` | one request -> one answer (below) |
-| GET | `/svc/{name}/schema` | the request and response schema the runtime generated from the model (kept on the record, so it answers while the service sleeps, with `state`) |
-| POST | `/svc/{name}/stream` | server-sent events: one `data:` message per frame of a transient prediction (`{step, t, state}`) or per chunk of a surface (`{indices, fields, scalars, done, total}`), then `event: end`; `event: error` with `{status, message}` when it stops |
-| GET | `/svc/{name}/requests/{rid}`, `…/result` | a request made with `?async=1`: `{request, state: running\|succeeded\|failed, error?, result_url?}`, then the answer itself |
-| GET | `/svc/{name}/health` | the runtime's health, or `{status: <state>}` while it is not up |
+| Method | Path                                                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/v1/projects/{id}/services`                             | `{board?, name?, document?, config?, start?}` -> 201 `Service`. `board` an id or `default`; `document` the board as the app has it (absent: the stored board); `name` the service name (absent: the Request node's `name`, else the board's name as a slug; `[a-z0-9-]{1,63}`, unique on the server). 400 when the board has no Request or Response node or its Inference step names no model; 409 when the name is taken |
+| GET    | `/api/v1/projects/{id}/services`, `/api/v1/services`         | `[Service]`; the server-wide list adds `latency: {p50_ms, p95_ms, in_flight, calls, errors, window}` and leaves the schema out                                                                                                                                                                                                                                                                                            |
+| GET    | `/api/v1/projects/{id}/services/{svc}`                       | `Service`; `{svc}` an id or name                                                                                                                                                                                                                                                                                                                                                                                          |
+| DELETE | `/api/v1/projects/{id}/services/{svc}`                       | 409 while it is starting, running or stopping                                                                                                                                                                                                                                                                                                                                                                             |
+| POST   | `/api/v1/projects/{id}/services/{svc}/start`                 | queues the runtime's job -> `Service` with state `starting`; 409 when it is up                                                                                                                                                                                                                                                                                                                                            |
+| POST   | `/api/v1/projects/{id}/services/{svc}/stop`                  | cancels the job and releases the worker -> `Service` (`stopped`)                                                                                                                                                                                                                                                                                                                                                          |
+| POST   | `/api/v1/projects/{id}/services/{svc}/deploy`                | `{document?, config?}`: a new snapshot from the board as it is now, `version` + 1; a running service is restarted on it                                                                                                                                                                                                                                                                                                   |
+| GET    | `/api/v1/projects/{id}/services/{svc}/status`                | the `Service` with `pending_reason` (why its job waits), `health` (the runtime's own, when it is up) and `latency`                                                                                                                                                                                                                                                                                                        |
+| GET    | `/api/v1/projects/{id}/services/{svc}/metrics`               | `{requests, errors, p50_ms, p95_ms, in_flight, calls, window, last_request_at, state, version, started_at}`                                                                                                                                                                                                                                                                                                               |
+| POST   | `/api/v1/projects/{id}/services/{svc}/tokens`                | `{name?, expires_in_days?}` -> 201 `{token, info, scope, endpoint}`: a token on the caller's account with the one scope `service:<name>`; 409 in single-user mode                                                                                                                                                                                                                                                         |
+| POST   | `/svc/{name}[?format=json\|arrow\|vtk\|npz&async=1&files=1]` | one request -> one answer (below)                                                                                                                                                                                                                                                                                                                                                                                         |
+| GET    | `/svc/{name}/schema`                                         | the request and response schema the runtime generated from the model (kept on the record, so it answers while the service sleeps, with `state`)                                                                                                                                                                                                                                                                           |
+| POST   | `/svc/{name}/stream`                                         | server-sent events: one `data:` message per frame of a transient prediction (`{step, t, state}`) or per chunk of a surface (`{indices, fields, scalars, done, total}`), then `event: end`; `event: error` with `{status, message}` when it stops                                                                                                                                                                          |
+| GET    | `/svc/{name}/requests/{rid}`, `…/result`                     | a request made with `?async=1`: `{request, state: running\|succeeded\|failed, error?, result_url?}`, then the answer itself                                                                                                                                                                                                                                                                                               |
+| GET    | `/svc/{name}/health`                                         | the runtime's health, or `{status: <state>}` while it is not up                                                                                                                                                                                                                                                                                                                                                           |
 
 `Service`: `{id, project_id, name, endpoint: "/svc/<name>", board_id, board_version,
 node_id, version, state: stopped | starting | running | stopping | idle | failed, job_id?,
@@ -450,19 +465,19 @@ are in both modes: `frontier-event:` lines, the `error:` and `hint:` lines a com
 with, a `frontier-result:` line, and the JSON a command prints as its result. A reader that
 looks for that result skips records (an object with `ts`, `level` and `message`).
 
-| Parameter | Meaning |
-|---|---|
-| `offset`, `limit` | position of the first record among those that pass the filters (0 is the first), and how many (200; at most 2000) |
-| `tail` | the last N records instead of `offset` |
-| `q` | words a record must contain, all of them, any case; the folded lines are searched too |
-| `level` | `trace,debug,info,warn,error` (any of) |
-| `source` | logger names (any of); `output` is text that names no logger, `event` the pipeline-run events |
-| `step` | pipeline step ids (any of) |
-| `since`, `until` | RFC 3339 or milliseconds since the epoch, inclusive; a record without a time has the time of the last record before it that had one |
-| `raw=1` | every state of a progress bar |
-| `histogram=<buckets>` | adds `histogram` (at most 400 buckets) |
+| Parameter                                     | Meaning                                                                                                                                                                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `offset`, `limit`                             | position of the first record among those that pass the filters (0 is the first), and how many (200; at most 2000)                                                                                                   |
+| `tail`                                        | the last N records instead of `offset`                                                                                                                                                                              |
+| `q`                                           | words a record must contain, all of them, any case; the folded lines are searched too                                                                                                                               |
+| `level`                                       | `trace,debug,info,warn,error` (any of)                                                                                                                                                                              |
+| `source`                                      | logger names (any of); `output` is text that names no logger, `event` the pipeline-run events                                                                                                                       |
+| `step`                                        | pipeline step ids (any of)                                                                                                                                                                                          |
+| `since`, `until`                              | RFC 3339 or milliseconds since the epoch, inclusive; a record without a time has the time of the last record before it that had one                                                                                 |
+| `raw=1`                                       | every state of a progress bar                                                                                                                                                                                       |
+| `histogram=<buckets>`                         | adds `histogram` (at most 400 buckets)                                                                                                                                                                              |
 | `find`, `find_level`, `find_from`, `find_dir` | adds `found`: the next (`next`, default) or previous (`prev`) record from position `find_from`, or the `first` or `last`, that contains `find` and has one of `find_level`, among the records that pass the filters |
-| `line`, `at` | adds `located`: the position of the record that holds line `line` of the log, or of the first record at or after time `at` |
+| `line`, `at`                                  | adds `located`: the position of the record that holds line `line` of the log, or of the first record at or after time `at`                                                                                          |
 
 Without `offset` and `tail`, a page asked for with `find`, `line` or `at` starts a third of
 a page above that place.
@@ -494,12 +509,12 @@ What happened while a person was looking elsewhere: one row per person and event
 the server (the newest 500 per person) and sent live. The vocabulary is
 `frontier_core::notification`, shared by the server and the app.
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/v1/notifications` | `?since=<seq>&limit=100&unread=1` -> `{notifications: [Notification], unread, head, user}`, newest first. `head` is the caller's newest sequence number (what to resume the stream from), `user` the caller's login name |
-| GET | `/api/v1/notifications/stream` | server-sent events, one message per notification (`id: <seq>`, the `Notification` as `data`), live. With `?since=<seq>` or `Last-Event-ID` the ones after that number come first, oldest first, so nothing is lost across a reconnect |
-| POST | `/api/v1/notifications/read` | `{ids: [<id>]}` or `{all: true}` -> `{unread}`. 400 with neither. Ids of other people change nothing |
-| DELETE | `/api/v1/notifications` | removes the caller's notifications -> `{deleted, unread: 0}`. Sequence numbers are not reused |
+| Method | Path                           | Notes                                                                                                                                                                                                                                 |
+| ------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/notifications`        | `?since=<seq>&limit=100&unread=1` -> `{notifications: [Notification], unread, head, user}`, newest first. `head` is the caller's newest sequence number (what to resume the stream from), `user` the caller's login name              |
+| GET    | `/api/v1/notifications/stream` | server-sent events, one message per notification (`id: <seq>`, the `Notification` as `data`), live. With `?since=<seq>` or `Last-Event-ID` the ones after that number come first, oldest first, so nothing is lost across a reconnect |
+| POST   | `/api/v1/notifications/read`   | `{ids: [<id>]}` or `{all: true}` -> `{unread}`. 400 with neither. Ids of other people change nothing                                                                                                                                  |
+| DELETE | `/api/v1/notifications`        | removes the caller's notifications -> `{deleted, unread: 0}`. Sequence numbers are not reused                                                                                                                                         |
 
 `Notification`: `{id, seq, kind, level, title, body, project, subject, actor, created_at, read}`.
 `id` is the sequence number as text; `level` is `info`, `success`, `warning` or `error`;
@@ -507,35 +522,35 @@ the server (the newest 500 per person) and sent live. The vocabulary is
 known secrets masked); neither carries ids or paths. `project` is a project id or null.
 `subject` is the thing to go to, `{type, id, ...}`:
 
-| `type` | `id` | other fields |
-|---|---|---|
-| `pipeline_run` | run id | `board`, `job`, `name` (the board's) |
-| `step` | step id | `run`, `board`, `job`, `name` (the node's title) |
-| `run` | run id | `name` |
-| `job` | job id | `name` |
-| `approval` | approval id | `session`, `dataset`, `plan` |
-| `model` | model name | `version` |
-| `worker` | worker id | `job` |
-| `credential` | provider id | |
+| `type`         | `id`        | other fields                                     |
+| -------------- | ----------- | ------------------------------------------------ |
+| `pipeline_run` | run id      | `board`, `job`, `name` (the board's)             |
+| `step`         | step id     | `run`, `board`, `job`, `name` (the node's title) |
+| `run`          | run id      | `name`                                           |
+| `job`          | job id      | `name`                                           |
+| `approval`     | approval id | `session`, `dataset`, `plan`                     |
+| `model`        | model name  | `version`                                        |
+| `worker`       | worker id   | `job`                                            |
+| `credential`   | provider id |                                                  |
 
 `actor` is the login name of who caused it (who started the run), or null; a client that
 shows "only mine" compares it with `user`.
 
-| `kind` | Level | Made when |
-|---|---|---|
-| `pipeline_run_finished`, `pipeline_run_failed` | success, error | the event log of a board's pipeline run gets `run.finished` (a cancelled run is not told) |
-| `step_failed` | error | a step of a pipeline run goes to `failed`; `body` is its one-line reason |
-| `run_finished`, `run_failed` | success, error | a training run changes to `finished` or `failed` |
-| `job_failed` | error | a job that is not a pipeline run's fails; `title` says what it was for |
-| `dataset_ready` | success | a hub pull or a data-preparation job succeeds |
-| `evaluation_ready` | success | a benchmark job succeeds |
-| `predictions_ready`, `inference_failed` | success, error | the job of an inference ends (not when cancelled); the subject is the run that holds the predictions (`type: run`, with `job` and `inference`); `body` is the number of samples, or the one-line reason |
-| `model_promoted`, `model_deployed` | success | a model version changes stage; a deployment is started |
-| `approval_granted`, `approval_refused` | success, warning | a person decides on an AI agent's plan or signs off a dataset version |
-| `worker_offline` | warning | a worker stops renewing the lease of work it holds |
-| `credential_test_failed` | error | a stored credential is tested and refused |
-| `job_queued_long`, `gate_failed`, `report_ready`, `approval_requested`, `pool_no_capacity`, `pod_idle_release`, `cost_threshold`, `credential_expiring`, `update_available` | | defined; no server event makes them yet |
-| `connection_lost`, `connection_restored` | error, success | made by the app, never by the server |
+| `kind`                                                                                                                                                                      | Level            | Made when                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pipeline_run_finished`, `pipeline_run_failed`                                                                                                                              | success, error   | the event log of a board's pipeline run gets `run.finished` (a cancelled run is not told)                                                                                                               |
+| `step_failed`                                                                                                                                                               | error            | a step of a pipeline run goes to `failed`; `body` is its one-line reason                                                                                                                                |
+| `run_finished`, `run_failed`                                                                                                                                                | success, error   | a training run changes to `finished` or `failed`                                                                                                                                                        |
+| `job_failed`                                                                                                                                                                | error            | a job that is not a pipeline run's fails; `title` says what it was for                                                                                                                                  |
+| `dataset_ready`                                                                                                                                                             | success          | a hub pull or a data-preparation job succeeds                                                                                                                                                           |
+| `evaluation_ready`                                                                                                                                                          | success          | a benchmark job succeeds                                                                                                                                                                                |
+| `predictions_ready`, `inference_failed`                                                                                                                                     | success, error   | the job of an inference ends (not when cancelled); the subject is the run that holds the predictions (`type: run`, with `job` and `inference`); `body` is the number of samples, or the one-line reason |
+| `model_promoted`, `model_deployed`                                                                                                                                          | success          | a model version changes stage; a deployment is started                                                                                                                                                  |
+| `approval_granted`, `approval_refused`                                                                                                                                      | success, warning | a person decides on an AI agent's plan or signs off a dataset version                                                                                                                                   |
+| `worker_offline`                                                                                                                                                            | warning          | a worker stops renewing the lease of work it holds                                                                                                                                                      |
+| `credential_test_failed`                                                                                                                                                    | error            | a stored credential is tested and refused                                                                                                                                                               |
+| `job_queued_long`, `gate_failed`, `report_ready`, `approval_requested`, `pool_no_capacity`, `pod_idle_release`, `cost_threshold`, `credential_expiring`, `update_available` |                  | defined; no server event makes them yet                                                                                                                                                                 |
+| `connection_lost`, `connection_restored`                                                                                                                                    | error, success   | made by the app, never by the server                                                                                                                                                                    |
 
 Who is told: the people who may read the notification's project (everyone of the
 organisation when it has none); `worker_offline` and `credential_test_failed` go to
@@ -548,14 +563,31 @@ app's `notifications.*` settings.
 ## JobSpec
 
 ```json
-{"id":"...","name":"train-ahmed","image":"ghcr.io/dimensionlab/frontier-trainer:dev",
- "command":["python","-m","frontier_train","--config","configs/ahmed_transolver.yaml"],
- "env":{"FRONTIER_SERVER":"...","FRONTIER_RUN_ID":"..."},
- "resources":{"gpus":1,"gpu_type":"any","cpus":8,"memory_gb":32},
- "mounts":[{"uri":"s3://.../dataset","path":"/data"}],
- "backend":"local|runpod|anyscale|slurm|k8s",
- "compute":{"pool":"training","role":"training","gpus":2,"nodes":2,"gpu_memory_gb":40,"exclusive":false},
- "allocation":null}
+{
+  "id": "...",
+  "name": "train-ahmed",
+  "image": "ghcr.io/dimensionlab/frontier-trainer:dev",
+  "command": [
+    "python",
+    "-m",
+    "frontier_train",
+    "--config",
+    "configs/ahmed_transolver.yaml"
+  ],
+  "env": { "FRONTIER_SERVER": "...", "FRONTIER_RUN_ID": "..." },
+  "resources": { "gpus": 1, "gpu_type": "any", "cpus": 8, "memory_gb": 32 },
+  "mounts": [{ "uri": "s3://.../dataset", "path": "/data" }],
+  "backend": "local|runpod|anyscale|slurm|k8s",
+  "compute": {
+    "pool": "training",
+    "role": "training",
+    "gpus": 2,
+    "nodes": 2,
+    "gpu_memory_gb": 40,
+    "exclusive": false
+  },
+  "allocation": null
+}
 ```
 
 `compute` is optional (`{}` = automatic; `gpus` is a count per node or a list of device uuids);
@@ -651,7 +683,7 @@ Rules:
 - Every mutation appends an Event with the authenticated user.
 - Upload verifies the package (checksums, schema) and rejects it with 422 listing the problems.
 - A deployment is a Job whose command is `python -m frontier_deploy serve --model <package>
-  --port <p> --device <d> [--variant <v>]`; its endpoint speaks the model server's inference
+--port <p> --device <d> [--variant <v>]`; its endpoint speaks the model server's inference
   API (`POST /v1/infer` in the request/response shape of NVIDIA's DoMINO NIM,
   `GET /v1/health/ready`, `GET /v1/models`, `GET /metrics`).
 - Until these routes exist, packages are attached to their training run as the artifact
@@ -667,9 +699,9 @@ subject to it: one rule per `(method, route)` in `frontier_auth::routes::RULES`
   `frontier_session`. With a cookie, every non-GET request also carries
   `X-Frontier-Csrf: <csrf_token>`.
 - `401` `{error, status: "unauthenticated", auth: {mode, config_url, login_url,
-  oidc_start_url?, local_session_url?}}` with `WWW-Authenticate: Bearer realm="frontier",
-  error="invalid_token", error_description="…", auth_mode="none|token|oidc",
-  auth_config="<url>/api/v1/auth/config"`.
+oidc_start_url?, local_session_url?}}` with `WWW-Authenticate: Bearer realm="frontier",
+error="invalid_token", error_description="…", auth_mode="none|token|oidc",
+auth_config="<url>/api/v1/auth/config"`.
 - `403` `{error, status: "forbidden", permission, required_role}`; `{…, status: "csrf"}`
   for a cookie request without the CSRF header; `{…, status: "forbidden_origin"}` from the
   origin/host guard; `{…, status: "blocked_by_policy"}` stays what it was.
@@ -679,29 +711,29 @@ subject to it: one rule per `(method, route)` in `frontier_auth::routes::RULES`
 - With authentication on, a 500 answers `{error: "internal error", request_id}` to anyone
   but an administrator.
 
-| Route | |
-|-------|---|
-| `GET /api/v1/auth/config` | Public. `{mode, single_user, local_token_required, local_session_url, token_login, oidc: {issuer, start_url} \| null, login_url, whoami_url, device_start_url, session_cookie, csrf_header, project_header}` |
-| `POST /api/v1/auth/local-session` | Single-user mode, browser on an allowed origin. `{mode: "none", token, token_type: "Bearer", user, role}` + cookie. 403 without `Origin` / `Sec-Fetch-Site: same-origin`; 409 in other modes. |
-| `POST /api/v1/auth/login {"token"}` | Opens a session: `Set-Cookie`, body as `whoami` plus `session_expires_at`. 401 for a bad token, 403 for a service account. |
-| `POST /api/v1/auth/logout` | Ends the session of the cookie. |
-| `GET /api/v1/auth/whoami` | `{mode, user: {id, name, display_name, kind}, org, role, project_roles: {id: role}, scopes, method, token_id, permissions: [...], csrf_token}` |
-| `GET /api/v1/auth/permissions` | `{roles, permissions: [{id, min, title}], routes: [{method, pattern, permission, scope, audit}]}` |
-| `GET /api/v1/auth/oidc/start[?return_to=]` | 303 to the provider (code flow, PKCE S256, state, nonce). |
-| `GET /api/v1/auth/oidc/callback?code=&state=` | Validates, provisions, sets the cookie, 303 to `return_to` or `/`. An HTML page with 403 when refused. |
-| `POST /api/v1/auth/device/start {"client_name"}` | `{device_code, user_code, verification_uri, verification_uri_complete, interval, expires_in}` |
-| `GET /api/v1/auth/device/verify?user_code=` | HTML: sign in if needed, then Allow / Deny. |
-| `POST /api/v1/auth/device/approve {"user_code", "approve"}` | A signed-in person decides. |
-| `POST /api/v1/auth/device/poll {"device_code"}` | `{status: pending \| denied \| expired}` or, once, `{status: "complete", token, token_id, expires_at, user}` |
-| `GET /api/v1/auth/tokens[?user=\|all=true]` | `{tokens: [{id, user, name, scopes, created_at, created_by, expires_at, last_used_at, last_used_ip, revoked_at, state}]}`; others' need `tokens.manage`. |
-| `POST /api/v1/auth/tokens {"name", "scopes"?, "expires_in_days"?, "user"?}` | 201 `{token, info, note}`: the only time the token is shown. |
-| `DELETE /api/v1/auth/tokens/{id}` | Revoke. |
-| `GET /api/v1/users`, `POST /api/v1/users {"name", "role"?, "kind"?: "user"\|"service", "display_name"?, "email"?, "issue_token"?, "scopes"?}` | List (`users.read`); create (`users.manage`), 201 `{user, token?, token_info?}` |
-| `GET\|PATCH\|DELETE /api/v1/users/{id or name}` | `PATCH {"role"?, "disabled"?, "display_name"?, "email"?}`; `DELETE` disables and revokes. 409 for the last administrator. |
-| `GET /api/v1/orgs` | The caller's organisation. |
-| `GET /api/v1/projects/{id}/members` | `{project_id, project, visibility, members: [{user_id, user, role, source, added_by, added_at}]}` |
-| `PUT\|DELETE /api/v1/projects/{id}/members/{user}` | `PUT {"role"}` (`members.manage`). |
-| `PUT /api/v1/projects/{id}/visibility {"visibility": "org"\|"private"}` | |
+| Route                                                                                                                                         |                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/v1/auth/config`                                                                                                                     | Public. `{mode, single_user, local_token_required, local_session_url, token_login, oidc: {issuer, start_url} \| null, login_url, whoami_url, device_start_url, session_cookie, csrf_header, project_header}` |
+| `POST /api/v1/auth/local-session`                                                                                                             | Single-user mode, browser on an allowed origin. `{mode: "none", token, token_type: "Bearer", user, role}` + cookie. 403 without `Origin` / `Sec-Fetch-Site: same-origin`; 409 in other modes.                |
+| `POST /api/v1/auth/login {"token"}`                                                                                                           | Opens a session: `Set-Cookie`, body as `whoami` plus `session_expires_at`. 401 for a bad token, 403 for a service account.                                                                                   |
+| `POST /api/v1/auth/logout`                                                                                                                    | Ends the session of the cookie.                                                                                                                                                                              |
+| `GET /api/v1/auth/whoami`                                                                                                                     | `{mode, user: {id, name, display_name, kind}, org, role, project_roles: {id: role}, scopes, method, token_id, permissions: [...], csrf_token}`                                                               |
+| `GET /api/v1/auth/permissions`                                                                                                                | `{roles, permissions: [{id, min, title}], routes: [{method, pattern, permission, scope, audit}]}`                                                                                                            |
+| `GET /api/v1/auth/oidc/start[?return_to=]`                                                                                                    | 303 to the provider (code flow, PKCE S256, state, nonce).                                                                                                                                                    |
+| `GET /api/v1/auth/oidc/callback?code=&state=`                                                                                                 | Validates, provisions, sets the cookie, 303 to `return_to` or `/`. An HTML page with 403 when refused.                                                                                                       |
+| `POST /api/v1/auth/device/start {"client_name"}`                                                                                              | `{device_code, user_code, verification_uri, verification_uri_complete, interval, expires_in}`                                                                                                                |
+| `GET /api/v1/auth/device/verify?user_code=`                                                                                                   | HTML: sign in if needed, then Allow / Deny.                                                                                                                                                                  |
+| `POST /api/v1/auth/device/approve {"user_code", "approve"}`                                                                                   | A signed-in person decides.                                                                                                                                                                                  |
+| `POST /api/v1/auth/device/poll {"device_code"}`                                                                                               | `{status: pending \| denied \| expired}` or, once, `{status: "complete", token, token_id, expires_at, user}`                                                                                                 |
+| `GET /api/v1/auth/tokens[?user=\|all=true]`                                                                                                   | `{tokens: [{id, user, name, scopes, created_at, created_by, expires_at, last_used_at, last_used_ip, revoked_at, state}]}`; others' need `tokens.manage`.                                                     |
+| `POST /api/v1/auth/tokens {"name", "scopes"?, "expires_in_days"?, "user"?}`                                                                   | 201 `{token, info, note}`: the only time the token is shown.                                                                                                                                                 |
+| `DELETE /api/v1/auth/tokens/{id}`                                                                                                             | Revoke.                                                                                                                                                                                                      |
+| `GET /api/v1/users`, `POST /api/v1/users {"name", "role"?, "kind"?: "user"\|"service", "display_name"?, "email"?, "issue_token"?, "scopes"?}` | List (`users.read`); create (`users.manage`), 201 `{user, token?, token_info?}`                                                                                                                              |
+| `GET\|PATCH\|DELETE /api/v1/users/{id or name}`                                                                                               | `PATCH {"role"?, "disabled"?, "display_name"?, "email"?}`; `DELETE` disables and revokes. 409 for the last administrator.                                                                                    |
+| `GET /api/v1/orgs`                                                                                                                            | The caller's organisation.                                                                                                                                                                                   |
+| `GET /api/v1/projects/{id}/members`                                                                                                           | `{project_id, project, visibility, members: [{user_id, user, role, source, added_by, added_at}]}`                                                                                                            |
+| `PUT\|DELETE /api/v1/projects/{id}/members/{user}`                                                                                            | `PUT {"role"}` (`members.manage`).                                                                                                                                                                           |
+| `PUT /api/v1/projects/{id}/visibility {"visibility": "org"\|"private"}`                                                                       |                                                                                                                                                                                                              |
 
 ## Start-up settings and restarting the server
 
@@ -710,11 +742,11 @@ Settings of scope `system` (the listen address, sign-in mode, limits, the secret
 through `PATCH /api/v1/settings` like the others, when `policy.settings.edit_startup`
 allows it:
 
-| `policy.settings.edit_startup` | Who may change start-up settings and restart the server |
-|---|---|
-| `local` (default) | single-user mode (`auth.mode = "none"`, listening on loopback), from this machine |
-| `admin` | any administrator (`settings.write`, `server.restart`) |
-| `off` | nobody through the API: the config file only |
+| `policy.settings.edit_startup` | Who may change start-up settings and restart the server                           |
+| ------------------------------ | --------------------------------------------------------------------------------- |
+| `local` (default)              | single-user mode (`auth.mode = "none"`, listening on loopback), from this machine |
+| `admin`                        | any administrator (`settings.write`, `server.restart`)                            |
+| `off`                          | nobody through the API: the config file only                                      |
 
 - **Stored, not applied.** The value is checked like any other setting and then with the
   server's own start-up checks on the resulting configuration (a network address without
@@ -747,7 +779,7 @@ allows it:
   again once the server answers; jobs of the built-in worker are interrupted, which is why
   `when: "idle"` waits until it has none. Where the process cannot replace itself (Windows,
   `FRONTIER_RESTART=manual`) `restart.how` is `manual` and the answer is `409 {status:
-  "manual", command}`: `sudo systemctl restart <unit>` when the server runs as a systemd
+"manual", command}`: `sudo systemctl restart <unit>` when the server runs as a systemd
   unit, else the command line it was started with. A client waits for a new `boot_id` in
   `GET /api/v1/server`.
 
@@ -758,14 +790,14 @@ allows it:
 - `GET /api/v1/audit[?actor=&action=&outcome=&object_kind=&object_id=&project=&request_id=&from=&to=&before=&limit=]`
   → `{entries: [Entry], next_before}` newest first; `action` takes a trailing `*`.
 - `Entry`: `{seq, at, request_id, actor_id, actor_name, actor_kind, role, auth_method,
-  token_id, ip, http_method, path, action, outcome, status, org_id, project_id,
-  object_kind, object_id, before_hash, after_hash, request_hash, response_hash, detail,
-  prev_hash, hash}`; `hash = SHA-256(prev_hash + "\n" + canonical JSON of the entry
-  without prev_hash and hash)`, keys sorted, compact.
+token_id, ip, http_method, path, action, outcome, status, org_id, project_id,
+object_kind, object_id, before_hash, after_hash, request_hash, response_hash, detail,
+prev_hash, hash}`; `hash = SHA-256(prev_hash + "\n" + canonical JSON of the entry
+without prev_hash and hash)`, keys sorted, compact.
 - `GET /api/v1/audit/export[?after=<seq>]` → `application/x-ndjson`, one `Entry` per line
   in chain order; header `X-Frontier-Audit-Anchor` is the hash the first line links to.
 - `GET /api/v1/audit/verify` → `{ok, checked, anchor_seq, anchor_hash, head_seq,
-  head_hash, break: null | {seq, reason}}`.
+head_hash, break: null | {seq, reason}}`.
 - `GET /api/v1/settings/audit` (the older settings trail) needs `audit.read` too.
 
 ## Secret store
@@ -797,10 +829,10 @@ stored credentials**.
  "how_to_change": "..."}
 ```
 
-  `needs_migration`: some stored credential is not in the backend new ones go to.
-  `available[].configured`: the backend's address or region is set (not that it works: use
-  the test). `available[].verified`, when present, says how far the backend has been
-  verified (`"contract tests only"` for `azure` and `gcp`): show it.
+`needs_migration`: some stored credential is not in the backend new ones go to.
+`available[].configured`: the backend's address or region is set (not that it works: use
+the test). `available[].verified`, when present, says how far the backend has been
+verified (`"contract tests only"` for `azure` and `gcp`): show it.
 
 - `POST /api/v1/secrets/backend/test [{"backend": "db" | "vault" | "aws"}]` → always 200:
   `{"ok": true, "backend", "detail"}` or `{"ok": false, "backend", "error"}`. Writes a
@@ -809,7 +841,7 @@ stored credentials**.
 
 - `POST /api/v1/secrets/backend/migrate [{"to": "db" | "<backend in use>", "dry_run": false}]`
   → `{"to", "dry_run", "moved": [{"credential": "huggingface/token (org)", "from": "db",
-  "to": "vault"}], "already_there": 3}`. Each value is written to the destination and read
+"to": "vault"}], "already_there": 3}`. Each value is written to the destination and read
   back before its row is switched and the old copy removed. 409 when `to` is an external
   backend that is not the configured one; 502 `{"error", "moved_before_the_failure"}` when
   a store fails part-way (what was moved stays moved; run it again).
@@ -833,13 +865,13 @@ GET /api/v1/lineage?node=<kind>:<id>[&depth=3][&direction=both][&format=json][&l
 GET /api/v1/lineage/kinds      -> node kinds and relations with descriptions (the legend)
 ```
 
-| Parameter | Values | Meaning |
-| --- | --- | --- |
-| `node` | `<kind>:<id>` | Root of the walk. Required. |
-| `depth` | 0 to 8, default 3 | Hops from the root; larger values are clamped to 8. |
-| `direction` | `both` (default), `upstream`, `downstream` | Which edges the walk follows. |
-| `format` | `json` (default), `prov` | `prov` returns W3C PROV-JSON. |
-| `limit` | 1 to 2000, default 2000 | Node cap; reaching it sets `truncated`. |
+| Parameter   | Values                                     | Meaning                                             |
+| ----------- | ------------------------------------------ | --------------------------------------------------- |
+| `node`      | `<kind>:<id>`                              | Root of the walk. Required.                         |
+| `depth`     | 0 to 8, default 3                          | Hops from the root; larger values are clamped to 8. |
+| `direction` | `both` (default), `upstream`, `downstream` | Which edges the walk follows.                       |
+| `format`    | `json` (default), `prov`                   | `prov` returns W3C PROV-JSON.                       |
+| `limit`     | 1 to 2000, default 2000                    | Node cap; reaching it sets `truncated`.             |
 
 ```jsonc
 {"root": "dataset:0199...", "depth": 3,
@@ -858,22 +890,22 @@ reference is known, a node with `attrs.missing = true`.
 
 ### Node kinds
 
-| Kind | Id after `<kind>:` | `project` | PROV |
-| --- | --- | --- | --- |
-| `hub_entry` | hub catalogue id | null | entity |
-| `connector` | connector id | null | entity |
-| `dataset` | dataset id (`unregistered/<label>` for a placeholder) | `datasets.project_id` when the column exists | entity |
-| `dataset_version` | `<dataset id>@<version id>` | the dataset's | entity |
-| `prep_op` | `<dataset id>@<provenance record id>` | the dataset's | activity |
-| `run` | run id | `runs.project` | activity |
-| `job` | job id | `jobs.project_id` when stamped, else the project of the run it names | activity |
-| `allocation` | allocation id | its job's | entity |
-| `code` | git sha | null | entity |
-| `checkpoint`, `evaluation`, `uq`, `report` | `<run id>/<artifact name>` | the run's | entity |
-| `model` | model name | the one project all its versions share, else null | entity |
-| `model_version` | `<name>@<version>` | the run the package is attached to | entity |
-| `variant` | `<name>@<version>/<variant id>` | the model version's | entity |
-| `deployment` | deployment id | the model version's | entity |
+| Kind                                       | Id after `<kind>:`                                    | `project`                                                            | PROV     |
+| ------------------------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------- | -------- |
+| `hub_entry`                                | hub catalogue id                                      | null                                                                 | entity   |
+| `connector`                                | connector id                                          | null                                                                 | entity   |
+| `dataset`                                  | dataset id (`unregistered/<label>` for a placeholder) | `datasets.project_id` when the column exists                         | entity   |
+| `dataset_version`                          | `<dataset id>@<version id>`                           | the dataset's                                                        | entity   |
+| `prep_op`                                  | `<dataset id>@<provenance record id>`                 | the dataset's                                                        | activity |
+| `run`                                      | run id                                                | `runs.project`                                                       | activity |
+| `job`                                      | job id                                                | `jobs.project_id` when stamped, else the project of the run it names | activity |
+| `allocation`                               | allocation id                                         | its job's                                                            | entity   |
+| `code`                                     | git sha                                               | null                                                                 | entity   |
+| `checkpoint`, `evaluation`, `uq`, `report` | `<run id>/<artifact name>`                            | the run's                                                            | entity   |
+| `model`                                    | model name                                            | the one project all its versions share, else null                    | entity   |
+| `model_version`                            | `<name>@<version>`                                    | the run the package is attached to                                   | entity   |
+| `variant`                                  | `<name>@<version>/<variant id>`                       | the model version's                                                  | entity   |
+| `deployment`                               | deployment id                                         | the model version's                                                  | entity   |
 
 Artifacts are classified by name: `.pt`, `.pth`, `.ckpt`, `.mdlus` and `.safetensors` are
 checkpoints; `eval-*.json`, `uq*.json` and `report.json` (by basename) are the evaluation kinds;
@@ -887,20 +919,20 @@ checkpoints; `eval-*.json`, `uq*.json` and `report.json` (by basename) are the e
 Every edge points from the upstream cause (`from`) to the downstream effect (`to`). `reads`
 says which end is the subject of the relation's name.
 
-| `rel` | Reads | Edges (`from` -> `to`) |
-| --- | --- | --- |
-| `pulled_from` | to rel from | hub_entry -> dataset; hub_entry -> model_version |
-| `converted_by` | to rel from | connector -> dataset |
-| `version_of` | to rel from | dataset -> dataset_version; model -> model_version |
-| `derived_from` | to rel from | parent dataset_version -> child; evaluation, uq -> report; variant -> variant; member run -> ensemble run; dataset or dataset_version -> model_version |
-| `used` | to rel from | dataset_version -> prep_op; dataset or dataset_version -> run; code -> run; evaluation, uq, report -> model_version |
-| `generated_by` | to rel from | prep_op -> dataset_version; hub pull job -> dataset; serve job -> deployment |
-| `ran_on` | to rel from | allocation -> job |
-| `fine_tuned_from` | to rel from | model_version, model, checkpoint, run or hub_entry -> run; the same -> model_version |
-| `produced` | from rel to | job -> run; run -> checkpoint |
-| `evaluated_by` | from rel to | run -> evaluation, uq, report |
-| `packaged_as` | from rel to | run -> model_version; checkpoint -> model_version; model_version -> variant |
-| `deployed_as` | from rel to | model_version -> deployment; variant -> deployment |
+| `rel`             | Reads       | Edges (`from` -> `to`)                                                                                                                                 |
+| ----------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pulled_from`     | to rel from | hub_entry -> dataset; hub_entry -> model_version                                                                                                       |
+| `converted_by`    | to rel from | connector -> dataset                                                                                                                                   |
+| `version_of`      | to rel from | dataset -> dataset_version; model -> model_version                                                                                                     |
+| `derived_from`    | to rel from | parent dataset_version -> child; evaluation, uq -> report; variant -> variant; member run -> ensemble run; dataset or dataset_version -> model_version |
+| `used`            | to rel from | dataset_version -> prep_op; dataset or dataset_version -> run; code -> run; evaluation, uq, report -> model_version                                    |
+| `generated_by`    | to rel from | prep_op -> dataset_version; hub pull job -> dataset; serve job -> deployment                                                                           |
+| `ran_on`          | to rel from | allocation -> job                                                                                                                                      |
+| `fine_tuned_from` | to rel from | model_version, model, checkpoint, run or hub_entry -> run; the same -> model_version                                                                   |
+| `produced`        | from rel to | job -> run; run -> checkpoint                                                                                                                          |
+| `evaluated_by`    | from rel to | run -> evaluation, uq, report                                                                                                                          |
+| `packaged_as`     | from rel to | run -> model_version; checkpoint -> model_version; model_version -> variant                                                                            |
+| `deployed_as`     | from rel to | model_version -> deployment; variant -> deployment                                                                                                     |
 
 ### Where each link comes from
 

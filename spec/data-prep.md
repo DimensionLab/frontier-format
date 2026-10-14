@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Frontier data preparation: operations, versions, provenance
 
 Normative description of the data-preparation contract that `frontier_prep` (operations,
@@ -166,30 +167,30 @@ Reference: `frontier_data.versions`. Layout inside a dataset directory:
 
 Operations (Python / CLI `python -m frontier_data versions …` / future `frontier data …`):
 
-| call | returns |
-|---|---|
-| `init(root)` | baseline version |
-| `commit(root, message, op=…)` | new version id (noop when nothing changed) |
-| `log(root)` | versions newest first with message, op id, actor, stats |
-| `diff(root, a, b)` | section 5 |
-| `revert(root, version)` | new version whose tree equals `version` (history kept) |
-| `checkout(root, version)` | working tree := version (HEAD moves; no new version) |
-| `lineage(root, target)` | versions and ops that touched `samples/<id>`, a field, or the manifest |
-| `gc(root)` | removed objects, bytes freed |
-| `tag(root, name, version)` | ref |
+| call                          | returns                                                                |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| `init(root)`                  | baseline version                                                       |
+| `commit(root, message, op=…)` | new version id (noop when nothing changed)                             |
+| `log(root)`                   | versions newest first with message, op id, actor, stats                |
+| `diff(root, a, b)`            | section 5                                                              |
+| `revert(root, version)`       | new version whose tree equals `version` (history kept)                 |
+| `checkout(root, version)`     | working tree := version (HEAD moves; no new version)                   |
+| `lineage(root, target)`       | versions and ops that touched `samples/<id>`, a field, or the manifest |
+| `gc(root)`                    | removed objects, bytes freed                                           |
+| `tag(root, name, version)`    | ref                                                                    |
 
 ## 4. Provenance
 
 `provenance.jsonl`: one JSON object per line, append-only, each with `id` (sha256 of the
 record without `id`, first 16 hex), `kind`, `at` (ISO 8601 UTC), `actor`.
 
-| kind | fields |
-|---|---|
-| `version` | `version`, `parent`, `message`, `op_record` |
-| `op` | the `Result` (section 2.1), plus `kernels`: `{backend: native|python, version, spec_revision, requested}` (section 11) |
+| kind        | fields                                                        |
+| ----------- | ------------------------------------------------------------- | -------------------------------------------------------- |
+| `version`   | `version`, `parent`, `message`, `op_record`                   |
+| `op`        | the `Result` (section 2.1), plus `kernels`: `{backend: native | python, version, spec_revision, requested}` (section 11) |
 | `assertion` | `version`, `check`, `status`, `target`, `detail`, `op_record` |
-| `approval` | `version` or `op_record`, `approved_by`, `decision: approve|reject`, `note` |
-| `note` | free text attached to a version |
+| `approval`  | `version` or `op_record`, `approved_by`, `decision: approve   | reject`, `note`                                          |
+| `note`      | free text attached to a version                               |
 
 The DAG: `version.parent` edges plus `op.input_version -> op.output_version`. Records are
 never rewritten; a server signs them when connected and merges offline logs on sync by id.
@@ -256,18 +257,18 @@ preview (diffs as before/after stats, renders), approve-and-run; right: provenan
 
 ## 9. Determinism register
 
-| op | class | reason |
-|---|---|---|
-| `prep.mesh.decimate` | tolerance | quadric collapse order depends on the library's heap tie-breaking; recorded `rel_area` 1e-3 and `face_count_rel` 0.05 |
-| `prep.mesh.resample` | seeded | random / farthest-point selection from `ctx.seed` (per-sample seed = sha256(seed, sample id)) |
-| `prep.dataset.split`, `prep.dataset.coverage` | seeded | permutation / LHS candidates from `params.seed` |
-| `prep.quality.check` | tolerance | assertions are bitwise; `quality/report.json` carries timings and a timestamp |
+| op                                                             | class                                                        | reason                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prep.mesh.decimate`                                           | tolerance                                                    | quadric collapse order depends on the library's heap tie-breaking; recorded `rel_area` 1e-3 and `face_count_rel` 0.05                                                                                                                                                                                                                                                                                                                                 |
+| `prep.mesh.resample`                                           | seeded                                                       | random / farthest-point selection from `ctx.seed` (per-sample seed = sha256(seed, sample id))                                                                                                                                                                                                                                                                                                                                                         |
+| `prep.dataset.split`, `prep.dataset.coverage`                  | seeded                                                       | permutation / LHS candidates from `params.seed`                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `prep.quality.check`                                           | tolerance                                                    | assertions are bitwise; `quality/report.json` carries timings and a timestamp                                                                                                                                                                                                                                                                                                                                                                         |
 | any op that changes level 0 of a sample with stored LOD levels | level 0: the op's class; rebuilt `lod/<n>` groups: tolerance | the engine rebuilds the stored levels from the new level 0 with the `prep.mesh.decimate` cascade (`rel_area` 1e-3, `face_count_rel` 0.05; identical run to run on one machine and library version); the Result and the provenance record carry `tolerance: {lod_rel_area, lod_face_count_rel}` and `lods_rebuilt`; samples without stored levels keep the op's class unchanged, and a rename is applied to the levels as a directory rename (bitwise) |
-| everything else | bitwise | sorted sample order, fixed-order float64 reductions, renames by directory rename |
+| everything else                                                | bitwise                                                      | sorted sample order, fixed-order float64 reductions, renames by directory rename                                                                                                                                                                                                                                                                                                                                                                      |
 
 ### 9.1 The gate fails closed
 
-`prep.quality.gate` decides from the assertions that are *effective* at the version it
+`prep.quality.gate` decides from the assertions that are _effective_ at the version it
 evaluates: the latest record per (check, target) that was made on content identical to that
 version's. An op that changes a sample (including an LOD rebuild) invalidates the assertions
 made on it. A check the gate requires that has no effective record for a sample that is in
@@ -301,41 +302,41 @@ untagged and the CLI says which version holds the tag and how to re-run the gate
 
 ## 10. First-party ops (v1.0.0)
 
-| id | category | changes | assertions |
-|---|---|---|---|
-| `prep.fields.rename` | fields | field names (no array rewrite) | |
-| `prep.fields.map` | fields | canonical names + units; judgments for ambiguous names | |
-| `prep.fields.cast_location` | fields | derived cell/point copies tagged `derived_from` | |
-| `prep.fields.components` | fields | reorder / sign / split / merge / magnitude | |
-| `prep.fields.nan_fix` | fields | fill / mask / drop steps | `nan_inf` |
-| `prep.fields.outlier_detect` | fields | `<field>_outlier` masks | `field_outliers`, `unit_plausibility` |
-| `prep.fields.smooth` | fields | Laplacian, justification recorded | |
-| `prep.fields.normalize` | manifest | `stats.normalization` from the train split | |
-| `prep.units.convert` | fields, geometry | pint factor, reference quantities, declared unit kept | |
-| `prep.scalars.derive` | forces.json, Cp/Cf fields | surface integrals | `force_closure` |
-| `prep.mesh.watertight_check` | meta | topology audit | `watertight` |
-| `prep.mesh.merge_seams` | geometry | coincident vertices | `area_conservation` |
-| `prep.mesh.repair` | geometry | degenerate/duplicate faces, orientation, small holes | `area_conservation` |
-| `prep.mesh.orient_outward` | geometry | consistent outward normals | |
-| `prep.mesh.transform` | geometry, vector fields | scale / translate / axes with handedness check | |
-| `prep.mesh.decimate` | LOD groups | quadric cascade after seam merge | `lod_area_conservation` |
-| `prep.mesh.resample` | `static/resample_index` | seeded point budget | |
-| `prep.mesh.part_ids` | `cell_fields/part_id` | connectivity (+ sharp edges), inferred | |
-| `prep.time.subsample` | time axis | stride / budget / target dt | |
-| `prep.time.trim` | time axis | MSER burn-in or explicit | |
-| `prep.time.align` | time axis | common t0 / length | |
-| `prep.time.drop_duplicate_frames` | time axis | frame hashes | `duplicate_frames` |
-| `prep.time.window_average` | `<field>_mean/_rms` | documented window | |
-| `prep.time.continuity_check` | `signals/continuity_<field>` | jumps, frozen frames | `temporal_continuity`, `times_monotonic` |
-| `prep.dataset.dedup` | manifest (+ sample removal) | exact + invariants + Chamfer; "rerun?" stays a judgment | `duplicate_geometry` |
-| `prep.dataset.split` | manifest splits/families | random / parameter hold-out / group | `split_leakage` |
-| `prep.dataset.coverage` | `stats.coverage` | bins, NN gaps, maximin suggestions | `parameter_coverage` |
-| `prep.dataset.balance` | `stats.weights` | regime weights | |
-| `prep.dataset.select` | manifest (+ sample removal) | ids / predicates / recorded quality | |
-| `prep.dataset.merge` | manifest, sample dirs | schema reconciliation | |
-| `prep.dataset.summarize` | `stats.summary`, `CARD.md` | | |
-| `prep.quality.check` | `quality/report.*` | every frontier-data check + frame hashes | all checks, `initial_frame_duplicates` |
-| `prep.quality.gate` | `stats.gate`, tag | closure checks required | `train_ready` |
+| id                                | category                     | changes                                                 | assertions                               |
+| --------------------------------- | ---------------------------- | ------------------------------------------------------- | ---------------------------------------- |
+| `prep.fields.rename`              | fields                       | field names (no array rewrite)                          |                                          |
+| `prep.fields.map`                 | fields                       | canonical names + units; judgments for ambiguous names  |                                          |
+| `prep.fields.cast_location`       | fields                       | derived cell/point copies tagged `derived_from`         |                                          |
+| `prep.fields.components`          | fields                       | reorder / sign / split / merge / magnitude              |                                          |
+| `prep.fields.nan_fix`             | fields                       | fill / mask / drop steps                                | `nan_inf`                                |
+| `prep.fields.outlier_detect`      | fields                       | `<field>_outlier` masks                                 | `field_outliers`, `unit_plausibility`    |
+| `prep.fields.smooth`              | fields                       | Laplacian, justification recorded                       |                                          |
+| `prep.fields.normalize`           | manifest                     | `stats.normalization` from the train split              |                                          |
+| `prep.units.convert`              | fields, geometry             | pint factor, reference quantities, declared unit kept   |                                          |
+| `prep.scalars.derive`             | forces.json, Cp/Cf fields    | surface integrals                                       | `force_closure`                          |
+| `prep.mesh.watertight_check`      | meta                         | topology audit                                          | `watertight`                             |
+| `prep.mesh.merge_seams`           | geometry                     | coincident vertices                                     | `area_conservation`                      |
+| `prep.mesh.repair`                | geometry                     | degenerate/duplicate faces, orientation, small holes    | `area_conservation`                      |
+| `prep.mesh.orient_outward`        | geometry                     | consistent outward normals                              |                                          |
+| `prep.mesh.transform`             | geometry, vector fields      | scale / translate / axes with handedness check          |                                          |
+| `prep.mesh.decimate`              | LOD groups                   | quadric cascade after seam merge                        | `lod_area_conservation`                  |
+| `prep.mesh.resample`              | `static/resample_index`      | seeded point budget                                     |                                          |
+| `prep.mesh.part_ids`              | `cell_fields/part_id`        | connectivity (+ sharp edges), inferred                  |                                          |
+| `prep.time.subsample`             | time axis                    | stride / budget / target dt                             |                                          |
+| `prep.time.trim`                  | time axis                    | MSER burn-in or explicit                                |                                          |
+| `prep.time.align`                 | time axis                    | common t0 / length                                      |                                          |
+| `prep.time.drop_duplicate_frames` | time axis                    | frame hashes                                            | `duplicate_frames`                       |
+| `prep.time.window_average`        | `<field>_mean/_rms`          | documented window                                       |                                          |
+| `prep.time.continuity_check`      | `signals/continuity_<field>` | jumps, frozen frames                                    | `temporal_continuity`, `times_monotonic` |
+| `prep.dataset.dedup`              | manifest (+ sample removal)  | exact + invariants + Chamfer; "rerun?" stays a judgment | `duplicate_geometry`                     |
+| `prep.dataset.split`              | manifest splits/families     | random / parameter hold-out / group                     | `split_leakage`                          |
+| `prep.dataset.coverage`           | `stats.coverage`             | bins, NN gaps, maximin suggestions                      | `parameter_coverage`                     |
+| `prep.dataset.balance`            | `stats.weights`              | regime weights                                          |                                          |
+| `prep.dataset.select`             | manifest (+ sample removal)  | ids / predicates / recorded quality                     |                                          |
+| `prep.dataset.merge`              | manifest, sample dirs        | schema reconciliation                                   |                                          |
+| `prep.dataset.summarize`          | `stats.summary`, `CARD.md`   |                                                         |                                          |
+| `prep.quality.check`              | `quality/report.*`           | every frontier-data check + frame hashes                | all checks, `initial_frame_duplicates`   |
+| `prep.quality.gate`               | `stats.gate`, tag            | closure checks required                                 | `train_ready`                            |
 
 ## 11. Kernels: reference and native implementations
 

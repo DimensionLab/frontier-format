@@ -1,4 +1,5 @@
 [package]
+workspace = "../.."
 name = "frontier-core"
 description = "Core domain model, plugin traits and error types for DimensionLab Frontier"
 version.workspace = true

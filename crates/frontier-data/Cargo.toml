@@ -1,4 +1,5 @@
 [package]
+workspace = "../.."
 name = "frontier-data"
 description = "Arrow-based, entity/time-indexed data model for metrics, meshes and fields"
 version.workspace = true

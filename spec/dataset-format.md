@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Frontier dataset format
 
 Normative description of `frontier-dataset` v1 and the v1.1 additions. The reference
@@ -31,12 +32,17 @@ at least levels 0 and 2 so a viewer can show 100 cases at once.
 `manifest.json` gains:
 
 ```json
-{"version": 1, "minor": 1,
- "sample_kind": "surface | mesh | grid | point_cloud",
- "temporal": "steady | transient",
- "time": {"n_steps": 100, "dt": 0.01, "units": "s", "uniform": true},
- "domain": "cfd | structural | thermal | multiphysics | materials | geophysical | other",
- "license": "CC-BY-SA-4.0", "citation": "...", "hub_id": "ahmedml"}
+{
+  "version": 1,
+  "minor": 1,
+  "sample_kind": "surface | mesh | grid | point_cloud",
+  "temporal": "steady | transient",
+  "time": { "n_steps": 100, "dt": 0.01, "units": "s", "uniform": true },
+  "domain": "cfd | structural | thermal | multiphysics | materials | geophysical | other",
+  "license": "CC-BY-SA-4.0",
+  "citation": "...",
+  "hub_id": "ahmedml"
+}
 ```
 
 Per sample, exactly one of:

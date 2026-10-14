@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Datasets hub catalog schema
 
 ## Catalog entries
@@ -7,29 +8,35 @@ Source of truth: `packages/frontier-hub/src/frontier_hub/catalog/<domain>/<id>.y
 to `packages/frontier-hub/src/frontier_hub/catalog.json` (committed; the server embeds it).
 
 ```yaml
-id: drivaernet-plus-plus            # stable kebab-case
+id: drivaernet-plus-plus # stable kebab-case
 name: DrivAerNet++
 kind: dataset | benchmark | collection
-domain: cfd                         # same vocabulary as manifest.domain
+domain: cfd # same vocabulary as manifest.domain
 tags: [automotive, external-aero, surface, volume, steady, rans]
-physics: {equations: [incompressible-ns], fidelity: rans, temporal: steady, dims: 3}
-geometry: {sample_kind: surface, typical_cells: 8.8e6}
-size: {samples: 8121, bytes: 3.9e13, subsets: [{id: surface-pressure, bytes: ...}]}
-license: {spdx: CC-BY-NC-4.0, commercial_use: false, url: ...}
-citation: {bibtex: "...", doi: ...}
+physics:
+  { equations: [incompressible-ns], fidelity: rans, temporal: steady, dims: 3 }
+geometry: { sample_kind: surface, typical_cells: 8.8e6 }
+size:
+  {
+    samples: 8121,
+    bytes: 3.9e13,
+    subsets: [{ id: surface-pressure, bytes: ... }],
+  }
+license: { spdx: CC-BY-NC-4.0, commercial_use: false, url: ... }
+citation: { bibtex: '...', doi: ... }
 homepage: ...
-sources:                            # how to fetch; first usable wins
-  - {type: huggingface, repo: ..., repo_type: dataset, patterns: [...]}
-  - {type: http | s3 | zenodo | dataverse | globus | git, ...}
-access: open | gated | request | manual | paid | generate | none   # section "Access"
-obtain: {url, credential, steps, files, command, connector, alternatives}   # optional
+sources: # how to fetch; first usable wins
+  - { type: huggingface, repo: ..., repo_type: dataset, patterns: [...] }
+  - { type: http | s3 | zenodo | dataverse | globus | git, ... }
+access: open | gated | request | manual | paid | generate | none # section "Access"
+obtain: { url, credential, steps, files, command, connector, alternatives } # optional
 formats: [vtk, hdf5, ...]
-converter: frontier_hub.converters.drivaernet:convert     # -> frontier-dataset v1.1, or null
-benchmarks: [drivaernet-pp-cd]      # ids of benchmark entries scored on it
-reference_results: [{model: ..., metric: ..., value: ..., source: ...}]
-status: verified | listed            # verified = we downloaded a subset and converted it
-verified: {date: 2026-10-10, subset: "...", notes: "..."}
-enterprise_notes: "why a Fortune 500 team would use it (pretraining, validation, V&V baseline)"
+converter: frontier_hub.converters.drivaernet:convert # -> frontier-dataset v1.1, or null
+benchmarks: [drivaernet-pp-cd] # ids of benchmark entries scored on it
+reference_results: [{ model: ..., metric: ..., value: ..., source: ... }]
+status: verified | listed # verified = we downloaded a subset and converted it
+verified: { date: 2026-10-10, subset: '...', notes: '...' }
+enterprise_notes: 'why a Fortune 500 team would use it (pretraining, validation, V&V baseline)'
 ```
 
 CLI: `python -m frontier_hub list|search|info|pull|obtain|attach|mirror|convert|prep|verify|export`
@@ -42,15 +49,15 @@ Server: `GET /api/v1/hub/datasets[?domain=&tag=&q=]`, `GET /api/v1/hub/datasets/
 
 `access` says how the data of an entry is actually obtained. Every entry has exactly one mode.
 
-| `access` | Meaning | What Frontier offers |
-|----------|---------|----------------------|
-| `open` | A public URL or repository that Frontier downloads unattended. | `pull` |
-| `gated` | Click-through terms accepted with an account, then a credential. | provider page, credential, `obtain --check`, `pull` |
-| `request` | The publisher approves each applicant (a form, an e-mail, a gated repository with manual approval). | where to ask, then `pull` or `attach` |
-| `manual` | A portal, a file share, a vendor CLI or an API that Frontier has no fetcher for. | the page, the files, `attach` |
-| `paid` | A commercial licence. | the vendor page, `attach` |
-| `generate` | The data is produced by running a script or a solver. | the command or the connector, `attach` |
-| `none` | Nothing is published (announced, or code only). | comparable entries |
+| `access`   | Meaning                                                                                             | What Frontier offers                                |
+| ---------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `open`     | A public URL or repository that Frontier downloads unattended.                                      | `pull`                                              |
+| `gated`    | Click-through terms accepted with an account, then a credential.                                    | provider page, credential, `obtain --check`, `pull` |
+| `request`  | The publisher approves each applicant (a form, an e-mail, a gated repository with manual approval). | where to ask, then `pull` or `attach`               |
+| `manual`   | A portal, a file share, a vendor CLI or an API that Frontier has no fetcher for.                    | the page, the files, `attach`                       |
+| `paid`     | A commercial licence.                                                                               | the vendor page, `attach`                           |
+| `generate` | The data is produced by running a script or a solver.                                               | the command or the connector, `attach`              |
+| `none`     | Nothing is published (announced, or code only).                                                     | comparable entries                                  |
 
 Older catalogs may write `registration` (read as `gated`) and `direct` (read as `open`).
 
@@ -67,23 +74,33 @@ Optional block with what cannot be derived from `access`, `sources` and `homepag
 
 ```yaml
 obtain:
-  url: https://portal.example/dataset          # where access is requested or files are downloaded
-  credential: huggingface                      # provider id for `frontier auth login <id>`
-  steps: ["Open ...", "Download ...", "Run `frontier hub attach ...`."]   # replaces the derived steps
-  files:                                       # files downloaded by hand; `attach` checks them
-    - {name: fields_0001.h5, bytes: 1048576, sha256: "..."}
-    - {name: "run_*/boundary.vtu"}             # a glob when the publisher numbers files
-  command: python make_data.py --out data/     # generate: the command that produces the data
-  connector: openfoam                          # generate: the connector that reads the results
-  alternatives: [airfrans, ahmedml]            # none: comparable entries (default: derived)
+  url: https://portal.example/dataset # where access is requested or files are downloaded
+  credential: huggingface # provider id for `frontier auth login <id>`
+  steps: ['Open ...', 'Download ...', 'Run `frontier hub attach ...`.'] # replaces the derived steps
+  files: # files downloaded by hand; `attach` checks them
+    - { name: fields_0001.h5, bytes: 1048576, sha256: '...' }
+    - { name: 'run_*/boundary.vtu' } # a glob when the publisher numbers files
+  command: python make_data.py --out data/ # generate: the command that produces the data
+  connector: openfoam # generate: the connector that reads the results
+  alternatives: [airfrans, ahmedml] # none: comparable entries (default: derived)
 ```
 
 The compiled catalog carries the result for clients as `obtain_guide` on every entry:
 
 ```json
-{"entry": "era5", "access": "manual", "steps": ["...", "..."], "actions": ["attach"],
- "url": "https://...", "credential": null, "files": [{"name": "...", "bytes": 1}],
- "command": null, "connector": null, "alternatives": [], "filled": true}
+{
+  "entry": "era5",
+  "access": "manual",
+  "steps": ["...", "..."],
+  "actions": ["attach"],
+  "url": "https://...",
+  "credential": null,
+  "files": [{ "name": "...", "bytes": 1 }],
+  "command": null,
+  "connector": null,
+  "alternatives": [],
+  "filled": true
+}
 ```
 
 `steps` are sentences with one action each, in order. `actions` is the subset of
@@ -123,9 +140,9 @@ them, and the entry's converter and the preparation tail run exactly as after a 
    stores one symbolic link per file, so a set too large to duplicate stays where it is.
    Object stores and URLs are always copied.
 4. **Record.** `provenance.json` of the raw directory gets `source: {type: "user-supplied",
-   location, mode}`, `supplied: {by, at, from, mode, origin, kind, archive_sha256?}`, a
+location, mode}`, `supplied: {by, at, from, mode, origin, kind, archive_sha256?}`, a
    `supplied_history` list, and per file `{bytes, sha256, origin, expected_checksum,
-   checksum_verified}`. `by` is the signed-in user (`FRONTIER_USER`, set by the server for a
+checksum_verified}`. `by` is the signed-in user (`FRONTIER_USER`, set by the server for a
    job) or the operating-system account. Locations are recorded without user info or query.
 5. **Convert.** With a converter, the dataset is written to `--out` and the preparation tail
    runs; the dataset's provenance log gets a note `raw files user-supplied` with the
@@ -180,18 +197,18 @@ and the acknowledgement. The server writes the same events to its audit log for 
 
 ## Server routes
 
-| Route | Role | Permission | Audit event |
-|-------|------|------------|-------------|
-| `GET /api/v1/hub/datasets/{id}` | viewer | `hub.read` | - |
-| `POST /api/v1/hub/datasets/{id}/access-check` `{subset?}` | member | `hub.pull` | - |
-| `POST /api/v1/hub/datasets/{id}/attach` `{source, subset?, mode?, replace?, target?, connector?, cases?, case_params?, backend?}` | member | `hub.attach` | `hub.attach` |
-| `POST /api/v1/hub/attach` `{name, source, connector?, cases?, case_params?, mode?, target?, backend?}` (no hub entry) | member | `hub.attach` | `hub.attach` |
-| `PUT /api/v1/hub/uploads/{name}` (the file as the request body) | member | `hub.attach` | `hub.attach` |
-| `GET /api/v1/hub/mirror/{id}` `[?subset=]` | member | `hub.pull` | - |
-| `POST /api/v1/hub/mirror/{id}/push` `{subset?, acknowledged?, backend?}` | maintainer | `hub.mirror.push` | `hub.mirror.push`, `hub.mirror.acknowledge` |
-| `POST /api/v1/hub/datasets/{id}/pull` (existing) | member | `hub.pull` | `hub.pull`; `hub.mirror.pull` when the mirror served it |
-| `GET /api/v1/hub/mirrors` | member | `hub.pull` | - |
-| `PATCH /api/v1/settings` `{"hub.mirrors": [...]}` (the settings route) | admin | `settings.write` | `settings.write` |
+| Route                                                                                                                             | Role       | Permission        | Audit event                                             |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------- | ------------------------------------------------------- |
+| `GET /api/v1/hub/datasets/{id}`                                                                                                   | viewer     | `hub.read`        | -                                                       |
+| `POST /api/v1/hub/datasets/{id}/access-check` `{subset?}`                                                                         | member     | `hub.pull`        | -                                                       |
+| `POST /api/v1/hub/datasets/{id}/attach` `{source, subset?, mode?, replace?, target?, connector?, cases?, case_params?, backend?}` | member     | `hub.attach`      | `hub.attach`                                            |
+| `POST /api/v1/hub/attach` `{name, source, connector?, cases?, case_params?, mode?, target?, backend?}` (no hub entry)             | member     | `hub.attach`      | `hub.attach`                                            |
+| `PUT /api/v1/hub/uploads/{name}` (the file as the request body)                                                                   | member     | `hub.attach`      | `hub.attach`                                            |
+| `GET /api/v1/hub/mirror/{id}` `[?subset=]`                                                                                        | member     | `hub.pull`        | -                                                       |
+| `POST /api/v1/hub/mirror/{id}/push` `{subset?, acknowledged?, backend?}`                                                          | maintainer | `hub.mirror.push` | `hub.mirror.push`, `hub.mirror.acknowledge`             |
+| `POST /api/v1/hub/datasets/{id}/pull` (existing)                                                                                  | member     | `hub.pull`        | `hub.pull`; `hub.mirror.pull` when the mirror served it |
+| `GET /api/v1/hub/mirrors`                                                                                                         | member     | `hub.pull`        | -                                                       |
+| `PATCH /api/v1/settings` `{"hub.mirrors": [...]}` (the settings route)                                                            | admin      | `settings.write`  | `settings.write`                                        |
 
 - `GET .../{id}` returns the entry with `obtain_guide`.
 - `access-check` runs `frontier_hub obtain <id> --check --json` on the control plane and
@@ -229,7 +246,7 @@ and the acknowledgement. The server writes the same events to its audit log for 
 - `push` reads the raw files from `<datasets root>/hub/<id>[-<subset>]/raw`. Without a mirror
   for the entry it answers `409 {status: "no_mirror"}`. When the licence gate applies and
   `acknowledged` is not true it answers `409 {status: "needs_acknowledgement", message,
-  reason, license, location}` and no job is queued.
+reason, license, location}` and no job is queued.
 - `acknowledged: true` is accepted from a maintainer or administrator only (the route's
   permission). It is written to the audit log as `hub.mirror.acknowledge` with the caller,
   the entry, the location, the reason and the job. When the job has finished, a second
@@ -243,7 +260,7 @@ and the acknowledgement. The server writes the same events to its audit log for 
   `hub.mirror.pull` in the submitter's name with entry, subset, location, files and bytes.
 - **Progress.** With `--json`, `pull`, `attach` and `mirror push` write progress to stderr,
   one JSON object per line: `{"ts", "level": "info", "logger": "frontier_hub", "message",
-  "fields": {"file", "bytes_done", "bytes_total", "files_done", "files_total"}}`. Every
+"fields": {"file", "bytes_done", "bytes_total", "files_done", "files_total"}}`. Every
   transfer has an opening record (what is moved, how many files, to or from where) and a
   closing record with the totals reached. In between, a record is written when a file is
   finished (not for each of many small files that finish within a fifth of a second of
@@ -303,15 +320,15 @@ Import node:
   The routes above start a job of their own outside any run; they serve the hub entry page.
   What the routes check, the submit of a board run checks for its import steps:
 
-  | Rule | Attach and pull routes | Board run (`POST …/boards/{board}/runs`) |
-  |---|---|---|
-  | A local path lies under the data directory, `storage.datasets_dir` or `storage.import_roots` | 403 | 403, naming the step |
-  | A location that carries a credential | 400 | 400, naming the step |
-  | Stored credential of the provider of an object-store location (`s3`, `gcs`, `azure`) | given to the job | given to the run's job, for the import steps that run |
-  | Hugging Face token and the organisation's mirror for a hub entry | given to a pull | given to the run's job (`FRONTIER_HUB__MIRRORS`, the mirror's credential) |
-  | Who supplied the files (`FRONTIER_USER`, written to the provenance) | the caller | the caller who started the run |
-  | Audit | `hub.attach`, `hub.pull` | the pipeline run's own records; no separate `hub.*` record |
-  | Result | the job's `result` | the step's `dataset` output, registered in the run's project |
+  | Rule                                                                                         | Attach and pull routes   | Board run (`POST …/boards/{board}/runs`)                                  |
+  | -------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------- |
+  | A local path lies under the data directory, `storage.datasets_dir` or `storage.import_roots` | 403                      | 403, naming the step                                                      |
+  | A location that carries a credential                                                         | 400                      | 400, naming the step                                                      |
+  | Stored credential of the provider of an object-store location (`s3`, `gcs`, `azure`)         | given to the job         | given to the run's job, for the import steps that run                     |
+  | Hugging Face token and the organisation's mirror for a hub entry                             | given to a pull          | given to the run's job (`FRONTIER_HUB__MIRRORS`, the mirror's credential) |
+  | Who supplied the files (`FRONTIER_USER`, written to the provenance)                          | the caller               | the caller who started the run                                            |
+  | Audit                                                                                        | `hub.attach`, `hub.pull` | the pipeline run's own records; no separate `hub.*` record                |
+  | Result                                                                                       | the job's `result`       | the step's `dataset` output, registered in the run's project              |
 
   A hub entry's organisation mirror is not written by a board run: sharing with the
   organisation is `push`, from the hub entry page.

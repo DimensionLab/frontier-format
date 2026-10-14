@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Connector plugin contract
 
 ## Protocol
@@ -16,7 +17,7 @@ class Connector(Protocol):
 
 `RawSample` is the in-memory neutral form (points, cells/faces, fields with `dims`, times,
 metadata) that `frontier_data` writes to v1.1. Connectors that need vendor software
-(Abaqus, STAR-CCM+, COMSOL, MATLAB live sessions) ship an *exporter script* run inside the
+(Abaqus, STAR-CCM+, COMSOL, MATLAB live sessions) ship an _exporter script_ run inside the
 vendor tool plus a reader for what it writes; they must never require the vendor licence at
 import time. Rust `frontier-connectors` keeps `detect` fast paths and delegates reads to
 Python through `frontier-py` or a subprocess.

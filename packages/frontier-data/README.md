@@ -47,30 +47,30 @@ assert validate_dataset("my-dataset").ok
 
 Run `python -m frontier_data <command> --help` for the flags.
 
-| Command | What it does |
-|---|---|
-| `ingest ahmedml` | Download AhmedML runs and convert them to a surface dataset |
-| `ingest the-well <name>` | Download part of a The Well dataset and convert it to transient grids |
-| `ingest meshgraphnets <name>` | Download part of a MeshGraphNets dataset and convert it to transient meshes |
-| `inspect <dataset>` | Print the manifest summary, splits and a table of samples |
-| `validate <dataset>` | Check a dataset against the format; exits non-zero on errors |
-| `quality <dataset>` | Run quality checks and write `quality/report.json` and `report.html` |
-| `synth <out>` | Write a small synthetic transient dataset |
-| `mesh-lods <dataset>` | Add coarser LOD levels to mesh samples |
-| `pipeline <pipeline.json>` | Run an ingest pipeline; `nodes` lists the node kinds |
+| Command                        | What it does                                                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `ingest ahmedml`               | Download AhmedML runs and convert them to a surface dataset                                                       |
+| `ingest the-well <name>`       | Download part of a The Well dataset and convert it to transient grids                                             |
+| `ingest meshgraphnets <name>`  | Download part of a MeshGraphNets dataset and convert it to transient meshes                                       |
+| `inspect <dataset>`            | Print the manifest summary, splits and a table of samples                                                         |
+| `validate <dataset>`           | Check a dataset against the format; exits non-zero on errors                                                      |
+| `quality <dataset>`            | Run quality checks and write `quality/report.json` and `report.html`                                              |
+| `synth <out>`                  | Write a small synthetic transient dataset                                                                         |
+| `mesh-lods <dataset>`          | Add coarser LOD levels to mesh samples                                                                            |
+| `pipeline <pipeline.json>`     | Run an ingest pipeline; `nodes` lists the node kinds                                                              |
 | `versions <command> <dataset>` | `init`, `log`, `status`, `commit`, `diff`, `revert`, `checkout`, `lineage`, `tag`, `approve`, `gc`, `export-prov` |
 
 ## API
 
-| Module | Contents |
-|---|---|
-| `frontier_data` | `Dataset`, `DatasetWriter`, `Sample`, `validate_dataset`, `write_surface_sample`, `write_mesh_sample`, `write_grid_sample`, `write_points_sample` |
-| `frontier_data.quality` | `run_quality`: per-sample and dataset checks with status `pass`, `warn`, `fail` or `skip` |
-| `frontier_data.splits` | `random_split`, `parameter_holdout_split`, `group_split`, `find_leakage` |
-| `frontier_data.versions` | `VersionStore`: immutable versions, provenance log, diff, revert, W3C PROV-JSON export |
-| `frontier_data.ingest` | `ingest_the_well`, `convert_the_well`, `ingest_meshgraphnets`, `convert_meshgraphnets` |
-| `frontier_data.pipeline` | `Pipeline`, `PipelineRunner`, `register` for JSON-serialisable ingest pipelines |
-| `frontier_data.predictions` | `write_transient_prediction`, `read_transient_prediction`, `pack_prediction_store` |
+| Module                      | Contents                                                                                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontier_data`             | `Dataset`, `DatasetWriter`, `Sample`, `validate_dataset`, `write_surface_sample`, `write_mesh_sample`, `write_grid_sample`, `write_points_sample` |
+| `frontier_data.quality`     | `run_quality`: per-sample and dataset checks with status `pass`, `warn`, `fail` or `skip`                                                         |
+| `frontier_data.splits`      | `random_split`, `parameter_holdout_split`, `group_split`, `find_leakage`                                                                          |
+| `frontier_data.versions`    | `VersionStore`: immutable versions, provenance log, diff, revert, W3C PROV-JSON export                                                            |
+| `frontier_data.ingest`      | `ingest_the_well`, `convert_the_well`, `ingest_meshgraphnets`, `convert_meshgraphnets`                                                            |
+| `frontier_data.pipeline`    | `Pipeline`, `PipelineRunner`, `register` for JSON-serialisable ingest pipelines                                                                   |
+| `frontier_data.predictions` | `write_transient_prediction`, `read_transient_prediction`, `pack_prediction_store`                                                                |
 
 ## Notices
 

@@ -1,4 +1,5 @@
 [package]
+workspace = "../.."
 name = "frontier-prep-kernels"
 description = "Deterministic data-preparation kernels (edge tables, topology audit, vertex merge, orientation, unit scaling); the Rust ports of the frontier_prep reference kernels"
 version.workspace = true

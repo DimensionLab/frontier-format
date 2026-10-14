@@ -39,18 +39,18 @@ From agentclientprotocol.com, protocol v1:
   `agent_thought_chunk`, `tool_call`, `tool_call_update`, `plan`,
   `available_commands_update`, `current_mode_update`.
 - Tool calls: `toolCallId`, `title`, optional `name`, `kind` in `read | edit | delete | move
-  | search | execute | think | fetch | switch_mode | other`, `status` in `pending |
-  in_progress | completed | failed`, `content[]` of `{type: content}`, `{type: diff, path,
-  oldText?, newText}` or `{type: terminal, terminalId}`, `locations[{path, line?}]`,
+| search | execute | think | fetch | switch_mode | other`, `status` in `pending |
+in_progress | completed | failed`, `content[]` of `{type: content}`, `{type: diff, path,
+oldText?, newText}` or `{type: terminal, terminalId}`, `locations[{path, line?}]`,
   `rawInput`, `rawOutput`. Updates carry only the fields that change.
 - `session/request_permission`: `sessionId`, `toolCall{toolCallId}`, `options[{optionId,
-  name, kind}]` with `kind` in `allow_once | allow_always | reject_once | reject_always`;
+name, kind}]` with `kind` in `allow_once | allow_always | reject_once | reject_always`;
   the response is `{outcome: selected, optionId}` or `{outcome: cancelled}` (mandatory after
   `session/cancel`).
 - Plan: `{sessionUpdate: plan, entries[{content, priority: high|medium|low, status:
-  pending|in_progress|completed}]}`; every update carries the full list.
+pending|in_progress|completed}]}`; every update carries the full list.
 - `session/prompt` ends with `stopReason` in `end_turn | max_tokens | max_turn_requests |
-  refusal | cancelled`. After `session/cancel` the agent MUST answer the pending prompt
+refusal | cancelled`. After `session/cancel` the agent MUST answer the pending prompt
   with `cancelled`.
 - Content blocks: `text`, `image` (base64 `data`, `mimeType`), `audio`, `resource_link`
   (`uri`, `name`, ...), `resource` (embedded: `uri`, `mimeType?`, `text` or `blob`).
@@ -111,10 +111,18 @@ Response:
   "protocolVersion": 1,
   "agentCapabilities": {
     "loadSession": true,
-    "promptCapabilities": {"image": false, "audio": false, "embeddedContext": true},
-    "mcpCapabilities": {"http": false, "sse": false}
+    "promptCapabilities": {
+      "image": false,
+      "audio": false,
+      "embeddedContext": true
+    },
+    "mcpCapabilities": { "http": false, "sse": false }
   },
-  "agentInfo": {"name": "frontier-agent", "title": "Frontier data-prep agent", "version": "<package version>"},
+  "agentInfo": {
+    "name": "frontier-agent",
+    "title": "Frontier data-prep agent",
+    "version": "<package version>"
+  },
   "authMethods": []
 }
 ```
@@ -175,31 +183,31 @@ Response:
 `session/prompt` → the harness runs one task with the prompt text (plus embedded text
 resources) as the user message, streaming the record as it is written:
 
-| Record event (`frontier_agent.record.EVENT_KINDS`) | ACP |
-|---|---|
-| `message` (assistant text) | `agent_message_chunk` per chunk; model "thinking" (when the backend exposes it) as `agent_thought_chunk` |
-| `tool_call` | `tool_call` with `toolCallId` = record seq, `name` = tool name, `title` from the table below, `status: in_progress`, `rawInput` = args |
-| `tool_result` | `tool_call_update` `status: completed`, `rawOutput` = result (redacted), `content`: a text block with the server's human summary when the tool has one |
-| `preview` | `tool_call_update` on the `<op>.preview` call: text block with the before/after stats; each render as `{type: content, content: {type: image, data, mimeType: "image/png"}}` (renders are files the preview wrote; read and base64 them; cap at 4 renders) |
-| `judgment` | `tool_call_update` on the `judge.*` call: text content with choice, confidence and backend |
-| `approval_request` | `session/request_permission` (section 8) |
-| `approval` | `tool_call_update` on the approval tool call: `completed`, text "approved by <approver>" or "refused" |
-| `op_run` | `tool_call_update` on the `<op>.run` call: `completed`, text with input → output version; and when the session records a recipe (`--record` of `frontier prep`), a `{type: diff, path: <cwd-relative recipe path>, oldText, newText}` so the client shows the recipe change |
-| `assertion` | text content on the current tool call |
-| `error` | `tool_call_update` `status: failed` with the message; policy refusals end the turn with `refusal` |
-| `note` | `agent_message_chunk` |
-| `session_end` | the prompt response |
+| Record event (`frontier_agent.record.EVENT_KINDS`) | ACP                                                                                                                                                                                                                                                                         |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `message` (assistant text)                         | `agent_message_chunk` per chunk; model "thinking" (when the backend exposes it) as `agent_thought_chunk`                                                                                                                                                                    |
+| `tool_call`                                        | `tool_call` with `toolCallId` = record seq, `name` = tool name, `title` from the table below, `status: in_progress`, `rawInput` = args                                                                                                                                      |
+| `tool_result`                                      | `tool_call_update` `status: completed`, `rawOutput` = result (redacted), `content`: a text block with the server's human summary when the tool has one                                                                                                                      |
+| `preview`                                          | `tool_call_update` on the `<op>.preview` call: text block with the before/after stats; each render as `{type: content, content: {type: image, data, mimeType: "image/png"}}` (renders are files the preview wrote; read and base64 them; cap at 4 renders)                  |
+| `judgment`                                         | `tool_call_update` on the `judge.*` call: text content with choice, confidence and backend                                                                                                                                                                                  |
+| `approval_request`                                 | `session/request_permission` (section 8)                                                                                                                                                                                                                                    |
+| `approval`                                         | `tool_call_update` on the approval tool call: `completed`, text "approved by <approver>" or "refused"                                                                                                                                                                       |
+| `op_run`                                           | `tool_call_update` on the `<op>.run` call: `completed`, text with input → output version; and when the session records a recipe (`--record` of `frontier prep`), a `{type: diff, path: <cwd-relative recipe path>, oldText, newText}` so the client shows the recipe change |
+| `assertion`                                        | text content on the current tool call                                                                                                                                                                                                                                       |
+| `error`                                            | `tool_call_update` `status: failed` with the message; policy refusals end the turn with `refusal`                                                                                                                                                                           |
+| `note`                                             | `agent_message_chunk`                                                                                                                                                                                                                                                       |
+| `session_end`                                      | the prompt response                                                                                                                                                                                                                                                         |
 
 Tool call `kind` and `title` by tool name:
 
-| Tool | kind | title |
-|---|---|---|
-| `dataset.list`, `dataset.describe`, `dataset.sample_stats`, `version.log`, `version.show`, `version.diff`, `quality.report`, `quality.check_leakage`, `prep.explain`, `prep.ops` | `read` | "Describe <dataset>", "Diff <a>..<b>", ... |
-| `judge.*` | `think` | "Judge <family>: <question>" |
-| `<op>.plan` | `other` | "Plan <op> on <dataset>" |
-| `<op>.preview` | `execute` | "Preview <op> on <n> samples" |
-| `<op>.run`, `version.revert` | `edit` | "Run <op> on <dataset>" / "Revert <dataset> to <version>" |
-| `prep.request_approval` | `other` | "Approval: <summary>" |
+| Tool                                                                                                                                                                             | kind      | title                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------- |
+| `dataset.list`, `dataset.describe`, `dataset.sample_stats`, `version.log`, `version.show`, `version.diff`, `quality.report`, `quality.check_leakage`, `prep.explain`, `prep.ops` | `read`    | "Describe <dataset>", "Diff <a>..<b>", ...                |
+| `judge.*`                                                                                                                                                                        | `think`   | "Judge <family>: <question>"                              |
+| `<op>.plan`                                                                                                                                                                      | `other`   | "Plan <op> on <dataset>"                                  |
+| `<op>.preview`                                                                                                                                                                   | `execute` | "Preview <op> on <n> samples"                             |
+| `<op>.run`, `version.revert`                                                                                                                                                     | `edit`    | "Run <op> on <dataset>" / "Revert <dataset> to <version>" |
+| `prep.request_approval`                                                                                                                                                          | `other`   | "Approval: <summary>"                                     |
 
 `locations` is set on `edit` calls when the dataset lives under `cwd`
 (`{path: datasets/<name>/provenance.jsonl}`), so the client can jump to the provenance.
@@ -222,9 +230,21 @@ per section 5. `max_tokens` is passed through from the backend.
 {
   "currentModeId": "diagnose",
   "availableModes": [
-    {"id": "diagnose", "name": "Diagnose (read-only)", "description": "Describe, sample, judge, check quality and leakage. No op can run."},
-    {"id": "prep", "name": "Prep with approvals", "description": "Plan, preview, then ask for approval before each op runs."},
-    {"id": "autonomous", "name": "Autonomous within policy", "description": "Ops in policy.ai.autonomous_op_classes run without asking; everything else still asks."}
+    {
+      "id": "diagnose",
+      "name": "Diagnose (read-only)",
+      "description": "Describe, sample, judge, check quality and leakage. No op can run."
+    },
+    {
+      "id": "prep",
+      "name": "Prep with approvals",
+      "description": "Plan, preview, then ask for approval before each op runs."
+    },
+    {
+      "id": "autonomous",
+      "name": "Autonomous within policy",
+      "description": "Ops in policy.ai.autonomous_op_classes run without asking; everything else still asks."
+    }
   ]
 }
 ```
@@ -261,13 +281,14 @@ When the model calls `prep.request_approval(plan_id, summary)`:
    per-session autonomy the site policy forbids. The tool call carries the summary, the
    plan (op, params, warnings) and the preview numbers as text content, so the person sees
    what the TUI dialog shows.
+
 3. Outcome handling:
    - `selected: approve` → `catalog.approvals.grant(plan_id, approver=<clientInfo.name>
-     user)`, record `approval {granted: true}`; the token is returned to the model as the
+user)`, record `approval {granted: true}`; the token is returned to the model as the
      tool result, exactly as for `--approver ui`.
    - `selected: approve_class` → grant, and remember the class for the session (no further
      requests for it; each later run still records an `approval` with `approver:
-     "session-grant"`).
+"session-grant"`).
    - `selected: refuse` → record `approval {granted: false}`; the tool result tells the
      model the person refused and that it must not retry the same plan.
    - `selected: refuse_all` → as refuse, plus the registry drops `prep.request_approval`
@@ -311,7 +332,7 @@ continues.
       "type": "custom",
       "command": "/path/to/frontier/.venv/bin/python",
       "args": ["-m", "frontier_agent", "acp"],
-      "env": {"FRONTIER_DATASETS_DIR": "/path/to/frontier/datasets"}
+      "env": { "FRONTIER_DATASETS_DIR": "/path/to/frontier/datasets" }
     }
   }
 }
@@ -333,7 +354,9 @@ permission prompt; `dev: open acp logs` shows the JSON-RPC traffic.
   "repository": "https://github.com/DimensionLab/frontier-sdk",
   "license": "Apache-2.0",
   "license_url": "https://github.com/DimensionLab/frontier-sdk/blob/main/LICENSE",
-  "distribution": {"uvx": {"package": "frontier-agent==<version>", "args": ["acp"]}}
+  "distribution": {
+    "uvx": { "package": "frontier-agent==<version>", "args": ["acp"] }
+  }
 }
 ```
 

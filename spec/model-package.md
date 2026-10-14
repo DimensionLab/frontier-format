@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Model package format (`frontier-model` v1)
 
 A trained physics model as one self-describing unit: the network in one or more formats, every
@@ -60,8 +61,14 @@ SHA-256. Weight files do not compress, which is why the tar is not gzipped.
 ### TensorSpec
 
 ```json
-{"name": "points", "dtype": "float32", "shape": ["batch", "n_points", 3],
- "units": "normalised", "description": "...", "dynamic_axes": {"0": "batch", "1": "n_points"}}
+{
+  "name": "points",
+  "dtype": "float32",
+  "shape": ["batch", "n_points", 3],
+  "units": "normalised",
+  "description": "...",
+  "dynamic_axes": { "0": "batch", "1": "n_points" }
+}
 ```
 
 A string in `shape` is a dynamic axis; `dynamic_axes` repeats them by index. The network works
@@ -70,13 +77,13 @@ units.
 
 Surface models (`task: surface`):
 
-| name | shape | meaning |
-|---|---|---|
-| `points` (in) | `[batch, n_points, 3]` | prediction locations, `(xyz - center) / scale` |
-| `cond` (in) | `[batch, C]` | conditioning vector, z-scored (`[batch, 1]` of zeros when the model has none) |
-| `p` (out) | `[batch, n_points, 1]` | the surface field, normalised |
-| `cd` (out) | `[batch, 1]` | drag coefficient, normalised |
-| `p_std`, `cd_std` (out, ensembles) | as above | standard deviation over the members, in normalised units (multiply by `std`, do not add `mean`) |
+| name                               | shape                  | meaning                                                                                         |
+| ---------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `points` (in)                      | `[batch, n_points, 3]` | prediction locations, `(xyz - center) / scale`                                                  |
+| `cond` (in)                        | `[batch, C]`           | conditioning vector, z-scored (`[batch, 1]` of zeros when the model has none)                   |
+| `p` (out)                          | `[batch, n_points, 1]` | the surface field, normalised                                                                   |
+| `cd` (out)                         | `[batch, 1]`           | drag coefficient, normalised                                                                    |
+| `p_std`, `cd_std` (out, ensembles) | as above               | standard deviation over the members, in normalised units (multiply by `std`, do not add `mean`) |
 
 Transient models (`task: transient`): `x` `[batch, *S, history * n_state]` (the history window,
 states stacked on the last axis, oldest first), optional `cond` `[batch, P]`, `static`
@@ -231,30 +238,39 @@ catalog entry. A model made before contracts existed gets one derived from what 
 
 ```jsonc
 {
-  "schema": "model-contract.v1", "contract": 1,
-  "task": "steady-surface-field",          // steady-surface-field | steady-mesh-field |
-                                           // transient-grid | transient-mesh | scalar-regression
+  "schema": "model-contract.v1",
+  "contract": 1,
+  "task": "steady-surface-field", // steady-surface-field | steady-mesh-field |
+  // transient-grid | transient-mesh | scalar-regression
   "inputs": {
-    "geometry": {"kind": "surface",        // surface | mesh | grid | points
-                 "resolution": {"kind": "points",          // points | spacing
-                                "trained": [10002, 10002], // fewest and most points seen
-                                "range": {"min": 2500, "max": 80016},
-                                "augmented": false,        // resolution varied on purpose
-                                "trained_lod": 1},         // for the record only
-                 "requires": ["points", "normals"],
-                 "units": {"length": "m"}},  // {} when the dataset does not say
-    "fields": [],                          // per-point/cell input fields, canonical names
-    "parameters": [{"name": "slant-angle-degrees", "required": true}],
-    "conditioning": []
+    "geometry": {
+      "kind": "surface", // surface | mesh | grid | points
+      "resolution": {
+        "kind": "points", // points | spacing
+        "trained": [10002, 10002], // fewest and most points seen
+        "range": { "min": 2500, "max": 80016 },
+        "augmented": false, // resolution varied on purpose
+        "trained_lod": 1,
+      }, // for the record only
+      "requires": ["points", "normals"],
+      "units": { "length": "m" },
+    }, // {} when the dataset does not say
+    "fields": [], // per-point/cell input fields, canonical names
+    "parameters": [{ "name": "slant-angle-degrees", "required": true }],
+    "conditioning": [],
   },
   "outputs": {
-    "fields": [{"name": "pressure", "location": "cell", "dims": ["scalar"]}],
+    "fields": [{ "name": "pressure", "location": "cell", "dims": ["scalar"] }],
     "scalars": ["drag_coefficient"],
-    "uncertainty": {"kind": "ensemble", "members": 5}   // absent for a single model
+    "uncertainty": { "kind": "ensemble", "members": 5 }, // absent for a single model
   },
-  "normalisation": {"ref": "v_7eb1…"},     // the dataset version the statistics came from
-  "trained_on": {"dataset": "ahmedml", "hub_id": "ahmedml", "version": "v_7eb1…"},
-  "derived": true                          // only on a contract that was not written at training
+  "normalisation": { "ref": "v_7eb1…" }, // the dataset version the statistics came from
+  "trained_on": {
+    "dataset": "ahmedml",
+    "hub_id": "ahmedml",
+    "version": "v_7eb1…",
+  },
+  "derived": true, // only on a contract that was not written at training
 }
 ```
 

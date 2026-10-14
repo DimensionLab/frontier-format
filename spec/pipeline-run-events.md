@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Pipeline run events v1
 
 _Status: draft (2026-10-12). Implemented: the vocabulary (`frontier_canvas::run_events`);
@@ -32,27 +33,27 @@ it launches). Consumers: the app, the CLI and TUI, the agent harness, ACP.
     └──► skipped   (an upstream step failed, was cancelled or skipped)
 ```
 
-| State | Meaning | At rest |
-|---|---|---|
-| `pending` | In the plan; nothing has looked at it yet. | no |
-| `waiting` | Its upstream steps are not all done. | no |
-| `queued` | Ready; waiting for a worker or a slot. | no |
-| `running` | Executing. Carries `progress` (0..1, optional) and a message. | no |
-| `cached` | Not executed: an earlier run produced the same fingerprint; its outputs are reused. | yes (success) |
-| `succeeded` | Finished; outputs are bound. | yes (success) |
-| `failed` | Finished with an error (one line + a log reference). An ordinary state tagged terminal: it has one transition, the retry. | yes, retryable |
-| `skipped` | Not executed because something upstream did not succeed, or the step is outside the requested range. | yes |
-| `cancelled` | Stopped by a person or by the run being cancelled. | yes |
+| State       | Meaning                                                                                                                   | At rest        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `pending`   | In the plan; nothing has looked at it yet.                                                                                | no             |
+| `waiting`   | Its upstream steps are not all done.                                                                                      | no             |
+| `queued`    | Ready; waiting for a worker or a slot.                                                                                    | no             |
+| `running`   | Executing. Carries `progress` (0..1, optional) and a message.                                                             | no             |
+| `cached`    | Not executed: an earlier run produced the same fingerprint; its outputs are reused.                                       | yes (success)  |
+| `succeeded` | Finished; outputs are bound.                                                                                              | yes (success)  |
+| `failed`    | Finished with an error (one line + a log reference). An ordinary state tagged terminal: it has one transition, the retry. | yes, retryable |
+| `skipped`   | Not executed because something upstream did not succeed, or the step is outside the requested range.                      | yes            |
+| `cancelled` | Stopped by a person or by the run being cancelled.                                                                        | yes            |
 
 Allowed transitions (anything else is rejected by the server and is a bug in the producer):
 
-| From | To |
-|---|---|
-| `pending` | `waiting`, `queued`, `skipped`, `cached`, `cancelled` |
-| `waiting` | `queued`, `skipped`, `cached`, `cancelled` |
-| `queued` | `running`, `cached`, `skipped`, `cancelled`, `failed` (queue timeout, cause `timeout`) |
+| From      | To                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------- |
+| `pending` | `waiting`, `queued`, `skipped`, `cached`, `cancelled`                                       |
+| `waiting` | `queued`, `skipped`, `cached`, `cancelled`                                                  |
+| `queued`  | `running`, `cached`, `skipped`, `cancelled`, `failed` (queue timeout, cause `timeout`)      |
 | `running` | `succeeded`, `failed`, `cancelled`, `queued` (the worker's lease was lost, cause `timeout`) |
-| `failed` | `queued` (a retry, cause `retry`) |
+| `failed`  | `queued` (a retry, cause `retry`)                                                           |
 
 `running → running` is not a transition: progress is a `step.progress` event that changes
 no state. `step.progress`, `step.metric` and `step.log` for a step that is at rest are
@@ -71,13 +72,13 @@ too long for a worker is `queued → failed` with cause `timeout`.
 
 Derived from the step states, never stored on its own:
 
-| Run state | When |
-|---|---|
-| `submitted` | no step has left `pending` |
-| `running` | some step is `waiting`, `queued` or `running` and none decided the outcome |
-| `succeeded` | every step is `succeeded`, `cached` or `skipped` by range |
-| `failed` | some step is `failed` and nothing can still run |
-| `cancelled` | the run was cancelled and nothing is running |
+| Run state   | When                                                                       |
+| ----------- | -------------------------------------------------------------------------- |
+| `submitted` | no step has left `pending`                                                 |
+| `running`   | some step is `waiting`, `queued` or `running` and none decided the outcome |
+| `succeeded` | every step is `succeeded`, `cached` or `skipped` by range                  |
+| `failed`    | some step is `failed` and nothing can still run                            |
+| `cancelled` | the run was cancelled and nothing is running                               |
 
 ## 3. Event
 
@@ -89,15 +90,16 @@ offline.
 ```jsonc
 {
   "v": 1,
-  "run": "prun_01a13…",              // pipeline run id (not a training run id)
+  "run": "prun_01a13…", // pipeline run id (not a training run id)
   "seq": 17,
-  "prev": "9f2c…",                   // hash of event 16
+  "prev": "9f2c…", // hash of event 16
   "at": "2026-10-12T14:03:11.482Z",
-  "type": "step.state",              // see section 4
-  "step": "train",                   // node id on the board; absent on run.* events
-  "from": "queued", "to": "running", // step.state only
-  "cause": {"kind": "worker", "by": "node-3", "detail": "claimed"},
-  "data": { }                        // per type, section 4
+  "type": "step.state", // see section 4
+  "step": "train", // node id on the board; absent on run.* events
+  "from": "queued",
+  "to": "running", // step.state only
+  "cause": { "kind": "worker", "by": "node-3", "detail": "claimed" },
+  "data": {}, // per type, section 4
 }
 ```
 
@@ -110,19 +112,19 @@ queue limit expired; `detail` says which), `rerun` (seeded from an earlier run),
 
 ## 4. Event types
 
-| `type` | `data` | Changes state |
-|---|---|---|
-| `run.submitted` | `{machine: {schema: "foldstate/1", hash}, board, board_version, project, by, plan: {steps: [{id, kind, params, fingerprint, needs: [step ids]}], edges}, parent?: {run, seq}, range?: {from?, only?}}` | creates the run; every step `pending`. `machine.hash` is the SHA-256 of the JCS-canonical machine definition generated from `plan` (step ids and `needs`), so an old log replays under the rules it was written with |
-| `step.state` | on `running`: `{worker?, job?, attempt}`; on `succeeded`/`cached`: `{outputs: [Output], seconds, cache_of?}`; on `failed`: `{error: {line, code?, log_ref}}`; on `skipped`: `{because}` | yes |
-| `step.progress` | `{fraction?: 0..1, message?, done?, total?}` | no |
-| `step.output` | `{output: Output}` — an output that exists before the step ends (the training run id as soon as the run is created) | binds an output |
-| `step.metric` | `{key, value, step?}` — a headline number worth showing on the node; full metrics stay on the run | no |
-| `step.log` | `{ref, offset, bytes}` — where the step's log grew; never the log text | no |
-| `step.checkpoint` | `{name: "last.pt" \| "best.pt", path, epoch}` — a training step saved a checkpoint | no |
-| `trigger.fired` | `{rule, inference?, job?, predictions?, checkpoint?, detail?}` — an automatic rule of the step started work; `cause.kind` is `trigger` | no |
-| `run.cancel_requested` | `{by, reason?}` | no (steps follow with `cancelled`) |
-| `run.finished` | `{state, seconds, summary: {ok, failed, cached, skipped}}` | closes the log |
-| `run.archived` / `run.restored` | `{by}` | visibility only |
+| `type`                          | `data`                                                                                                                                                                                                 | Changes state                                                                                                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.submitted`                 | `{machine: {schema: "foldstate/1", hash}, board, board_version, project, by, plan: {steps: [{id, kind, params, fingerprint, needs: [step ids]}], edges}, parent?: {run, seq}, range?: {from?, only?}}` | creates the run; every step `pending`. `machine.hash` is the SHA-256 of the JCS-canonical machine definition generated from `plan` (step ids and `needs`), so an old log replays under the rules it was written with |
+| `step.state`                    | on `running`: `{worker?, job?, attempt}`; on `succeeded`/`cached`: `{outputs: [Output], seconds, cache_of?}`; on `failed`: `{error: {line, code?, log_ref}}`; on `skipped`: `{because}`                | yes                                                                                                                                                                                                                  |
+| `step.progress`                 | `{fraction?: 0..1, message?, done?, total?}`                                                                                                                                                           | no                                                                                                                                                                                                                   |
+| `step.output`                   | `{output: Output}` — an output that exists before the step ends (the training run id as soon as the run is created)                                                                                    | binds an output                                                                                                                                                                                                      |
+| `step.metric`                   | `{key, value, step?}` — a headline number worth showing on the node; full metrics stay on the run                                                                                                      | no                                                                                                                                                                                                                   |
+| `step.log`                      | `{ref, offset, bytes}` — where the step's log grew; never the log text                                                                                                                                 | no                                                                                                                                                                                                                   |
+| `step.checkpoint`               | `{name: "last.pt" \| "best.pt", path, epoch}` — a training step saved a checkpoint                                                                                                                     | no                                                                                                                                                                                                                   |
+| `trigger.fired`                 | `{rule, inference?, job?, predictions?, checkpoint?, detail?}` — an automatic rule of the step started work; `cause.kind` is `trigger`                                                                 | no                                                                                                                                                                                                                   |
+| `run.cancel_requested`          | `{by, reason?}`                                                                                                                                                                                        | no (steps follow with `cancelled`)                                                                                                                                                                                   |
+| `run.finished`                  | `{state, seconds, summary: {ok, failed, cached, skipped}}`                                                                                                                                             | closes the log                                                                                                                                                                                                       |
+| `run.archived` / `run.restored` | `{by}`                                                                                                                                                                                                 | visibility only                                                                                                                                                                                                      |
 
 ```jsonc
 // Output: what a step made, by reference.
@@ -162,35 +164,35 @@ downstream of a bound output shows that output.
 
 ## 6. Time travel, fork, re-run, restore
 
-* **Scrub**: the app renders `state(N)` for any N. What the nodes show is read as of the
+- **Scrub**: the app renders `state(N)` for any N. What the nodes show is read as of the
   time of event N (`until_time` on the run's metrics, artifacts and predictions,
   `docs/spec/api.md`): a plot draws the curve up to that moment, a viewer has the
   predictions that existed by then. While a past state is shown the board is read-only:
   no command changes the document, no gesture starts, and nothing is saved.
-* **Why**: for event N the engine's explanation of it in `state(N-1)` (the transitions it
+- **Why**: for event N the engine's explanation of it in `state(N-1)` (the transitions it
   could take, the guard of each, part by part) is shown as sentences
   (`frontier_canvas::run_words`): what happened and its cause, which rule did not apply
   and the condition that failed, and for every step waiting in `state(N)` the upstream
   steps that had not succeeded with the state each was in. The explanation as data stays
   available next to them.
-* **Timeline**: a past run is also drawn over time (`frontier_canvas::run_timeline`): one
+- **Timeline**: a past run is also drawn over time (`frontier_canvas::run_timeline`): one
   lane per step of the plan, a segment for every stretch a step spent in one state, a mark
   at every `step.state` event (a failure larger, a reused step as a diamond), a line at
   event N. Choosing a mark sets N to its event. Progress, metric and log events are
   counted, not drawn, so the picture has a few elements per step for a log of any length
   (100 000 events lay out in a few milliseconds). A run with `parent` names the run and
   event it continues.
-* **Run tree**: the runs of a board are also drawn as a tree
+- **Run tree**: the runs of a board are also drawn as a tree
   (`frontier_canvas::run_diff::tree`): a row per run, a run that continues another under
   its parent, its row starting where it leaves the parent (`parent.seq` along the parent's
   events) and joined to it there. A row opens its run; the joint opens the parent at that
   event. A run whose parent is not listed (deleted, archived and hidden, or older than the
   newest 200) is a root marked as continuing a run that is not listed. The layout is
   linear in the number of runs and draws a few elements per run.
-* **Fork** (engine primitive): continue from the exact state at sequence number N, sharing
+- **Fork** (engine primitive): continue from the exact state at sequence number N, sharing
   the log prefix 1..N. The fork is a new log whose first N events are the parent's.
   `POST …/pipeline-runs/{run}/fork {seq?, backend?, compute?}` -> 201 `{run, parent: {run,
-  seq}, job?, state}`. The new run's events 1..N are the parent's with the new run id and
+seq}, job?, state}`. The new run's events 1..N are the parent's with the new run id and
   their own hash chain; its `run.submitted` carries `parent` and who forked. It runs under
   the parent's plan (steps, parameters, fingerprints): a step that had succeeded keeps its
   outputs, a step that was queued, waiting or running runs, a step that had failed is
@@ -198,14 +200,14 @@ downstream of a bound output shows that output.
   cancelled by then stays so. 409 when the run had ended by event N (nothing is left to
   continue: re-run instead); 400 when the run has no event N. `seq` absent: the last
   event.
-* **Re-run from here** (Frontier operation): `POST …/pipeline-runs/{run}/rerun {seq?,
-  pipeline?, document?, backend?, compute?}` creates a new run of the board (`pipeline`: its
+- **Re-run from here** (Frontier operation): `POST …/pipeline-runs/{run}/rerun {seq?,
+pipeline?, document?, backend?, compute?}` creates a new run of the board (`pipeline`: its
   steps as they are now; absent: the stored board's) whose `run.submitted` carries `parent:
-  {run, seq}`. Steps whose fingerprint was `succeeded` or `cached` in `state(seq)` of the
+{run, seq}`. Steps whose fingerprint was `succeeded` or `cached` in `state(seq)` of the
   parent start as `cached` (cause `rerun`, `detail` the parent run); the rest run, with the
   edited parameters or graph. The history of a board is therefore a tree of runs:
   `RunSummary.parent` is `{run, seq}` or null.
-* **Restore**: never a deletion. At the engine level it is an appended restore entry; the
+- **Restore**: never a deletion. At the engine level it is an appended restore entry; the
   Frontier-level effect is a new board version holding the graph and parameters of that
   state, and, when asked, a re-run from it. A run keeps the board document it was started
   from (`document` of the submit, else the stored board at that moment; a fork has its
@@ -213,30 +215,30 @@ downstream of a bound output shows that output.
   document as the newest version of the board with the note `restored from run …`; the
   version it replaces stays in the board's history. A run from before documents were kept
   falls back to the board version it names, and is 404 when that version is gone.
-* **Archive / delete**: `POST …/pipeline-runs/{run}/archive` appends `run.archived` to a
+- **Archive / delete**: `POST …/pipeline-runs/{run}/archive` appends `run.archived` to a
   run that has ended (409 while it is going) and the lists leave it out unless asked
   (`?archived=true` adds archived runs, `?archived=only` shows them alone); `…/unarchive`
   appends `run.restored`. The person who started a run archives it; a run of someone else
   needs `runs.delete` (maintainer). `GET …/pipeline-runs/{run}/deletion` says what a delete
   would do: `{run, archived, removes: {events, work_files}, outputs_kept: [{kind, id,
-  version, referenced_by: [run]}], outputs_unused, continued_by: [run], blocked}`. `DELETE
-  …/pipeline-runs/{run}` (`runs.delete`; 409 unless archived) removes the event log and
+version, referenced_by: [run]}], outputs_unused, continued_by: [run], blocked}`. `DELETE
+…/pipeline-runs/{run}` (`runs.delete`; 409 unless archived) removes the event log and
   the run's work files and leaves a tombstone `{run, state, created_by, created_at,
-  deleted_by, at, parent, removed: {events, outputs, continued_by}}`
+deleted_by, at, parent, removed: {events, outputs, continued_by}}`
   (`GET …/boards/{board}/runs/deleted`), so a run forked from it still names its parent.
   Both changes are audit records (`pipeline_run`). What the run produced (training runs,
   datasets, reports) is kept by default, including what no other run references.
   `DELETE …?outputs=unused` also removes `outputs_unused` of the preview, `[{kind: run |
-  predictions | dataset, id, name, artifacts?}]`: a training or predictions run of the
+predictions | dataset, id, name, artifacts?}]`: a training or predictions run of the
   project (with its metrics, artifacts and files), or a dataset the server wrote under the
   project, that no other pipeline run binds in any version, no board of the project names,
   and, for a dataset, that is not shared with another project and that no run which stays
   was made from. The tombstone lists them as `removed.outputs_deleted`. 400 for any other
   value of `outputs`.
-* **Compare**: `GET …/pipeline-runs/{run}/snapshot` is a run as a whole in one answer:
+- **Compare**: `GET …/pipeline-runs/{run}/snapshot` is a run as a whole in one answer:
   `{summary, document, plan: {steps: [{id, kind, params, fingerprint, needs}], edges},
-  range, state, datasets: [{step, port, id, version}], runs: [{step, port, id}],
-  predictions: [{step, port, id}], compute: {backend, request, image, worker}}`.
+range, state, datasets: [{step, port, id, version}], runs: [{step, port, id}],
+predictions: [{step, port, id}], compute: {backend, request, image, worker}}`.
   `document` is the board the run was started from (null when it is no longer kept),
   `state` the fold at the head, `datasets` / `runs` / `predictions` what its steps bound,
   `compute` what its job was asked for and the worker that took it (null when every step
@@ -270,6 +272,7 @@ DELETE /api/v1/projects/{id}/pipeline-runs/{run}[?outputs=unused]
                                                               -> {deleted, deleted_by, at, removed}
 GET  /api/v1/projects/{id}/boards/{board}/runs/deleted        -> [tombstone], newest first
 ```
+
 The two list routes take `?archived=true|only`.
 
 `RunSummary` = `{id, project_id, board_id, board_version, job_id?, state, head_seq,
@@ -298,19 +301,19 @@ training image of this version in `compute.registry`.
 
 **Steps.** A node of the board is a step when it has what it needs wired in:
 
-| Node kind | Step when | Runs | Binds |
-|---|---|---|---|
-| `import` | always | by `source`: `example` `frontier_examples install`; `hub` `frontier_hub pull --convert`; `attach` `frontier_hub attach <ref> <files>` (files the user already has for a hub entry; `subset`, `mode`); `connector` `frontier_connectors convert <ref>` with `connector`, `cases` (a glob or `auto`: one sample per case), `case_params` and `name`, or `frontier_hub attach --name` when `ref` is an object-store or `https` location; all into the datasets directory (skipped when the dataset is already there); `dataset`: a registered dataset is used as it is. A local path in `ref` (`connector`) or `files` (`attach`) must lie inside the directories requests may use (`storage.import_roots`) when requests are confined, else the submit is 403; a location that carries a credential is 400. The run's job gets what the import steps that run need, as the hub's own jobs do: the stored credential of an object-store location's provider, the Hugging Face token and the organisation's mirror for a hub entry, and the caller as `FRONTIER_USER` for files they supply (`docs/spec/hub-catalog.md`, "Contract for the app") | `dataset` (`dataset_version`) |
-| `hf_source` … `dataset_sink` | always | the data kinds of `frontier_data.pipeline`, in process | the sink: `dataset` |
-| `recipe` | a dataset reaches `dataset` | `frontier_prep versions init` if the dataset has no versions, then the recipe in the node's `text` | `dataset` with the new `version` |
-| `training_run` | a dataset reaches `dataset` | `frontier_train train` (`config`, `epochs`, `overrides`; the train-ready gate applies unless `allow_ungated`). With a base model (`base_source` `hub`, `package` or `run` and `base_ref`: a hub model id, `name@version`, a run id) it runs `frontier_train finetune --base` instead: a hub model goes by its id and is fetched by the job into the raw files of the hub (`storage.raw_dir`), a package or a run is resolved by the server to the file the job opens (`base_dir`). A base that is asked for and not chosen fails the step | `model` (`run`, as soon as the run exists; `name` is its output directory); when it fine-tunes, `base` (below) |
-| `inference` | a `training_run` step feeds `model`, or the node names a model (`model_source` `run` or `package` with `model_ref`; the server resolves it to `model_dir`) | `frontier_train infer` on the samples (`split`, `ids`, `first`) of the dataset wired in, named, or trained on; the predictions are attached to a run made for them | `predictions` (`predictions`: that run) |
-| `evaluate` | an `inference` step feeds `predictions`, or a `training_run` step feeds `model`, or the node names a model | fed by predictions: `frontier_eval run` per benchmark on them, no second inference, attached to the run that holds them; otherwise `frontier_eval evaluate`; with `include_uq` and a checkpoint, `frontier_train predict` on the validation split and `frontier_eval uq` | `report` (`artifact`: the evaluation directory), `model` (the run, when there is one) |
-| `input` | always | `frontier_data inputs`: typed parameters (`fields`, or a `table`) and a geometry (`geometry_source`: a parametric `geometry` such as `ahmed` at `resolution`, `geometry_files`, or the samples `ids` of the dataset wired in) as an input dataset, every case in the `test` split; checked against the contract of the model wired in or named (`model_source`, `model_ref`), when there is one | `dataset` (`dataset_version`) |
-| `adapt` | a dataset reaches `dataset` and a model reaches `model` or is named | `frontier_train compat` for the verdict (unless `fixes` is given), then `frontier_prep adapt` on a copy of the dataset: the fixes as a recipe (`values` for parameters the model needs); a dataset that fits as it is passes through | `dataset` (`dataset_version`) |
-| `optimise` | a model reaches `model` or is named | `frontier_train optimise`: the parameters `free` of the parametric `geometry` moved (`method`, `budget`, `starts`, `bounds`, `fixed`, `conditions`, `checks`, `minimise`, `trust_z`, `resolution`) to minimise what the model predicts; each evaluation is a `step.metric` (`optimise/best`) and a metric of the run that holds the results; `optimum.json` is attached to it | `metrics` (`run`: the one that holds the search), `dataset` (`dataset_version`: the optimum's geometry), `optimum` (`artifact`: `optimum.json`) |
-| `report` | an `evaluate` step feeds `report`, or a `training_run` step feeds `model` (then it evaluates first, without uncertainty) | `frontier_eval report`, attached to the run | `report`, `model` (the run) |
-| `service.in`, `service.out` | never: the Request and Response nodes of a served board are boundaries, not steps (`docs/spec/api.md`, "Services"). The canvas leaves them out of the export; a runner that meets one passes through it (`succeeded` at once, a Response passing on the outputs wired into it). The service runtime, not a board run, executes the steps between them once per call | nothing | `service.out`: what reaches it |
+| Node kind                    | Step when                                                                                                                                                                                                                                                                                                                                                           | Runs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Binds                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `import`                     | always                                                                                                                                                                                                                                                                                                                                                              | by `source`: `example` `frontier_examples install`; `hub` `frontier_hub pull --convert`; `attach` `frontier_hub attach <ref> <files>` (files the user already has for a hub entry; `subset`, `mode`); `connector` `frontier_connectors convert <ref>` with `connector`, `cases` (a glob or `auto`: one sample per case), `case_params` and `name`, or `frontier_hub attach --name` when `ref` is an object-store or `https` location; all into the datasets directory (skipped when the dataset is already there); `dataset`: a registered dataset is used as it is. A local path in `ref` (`connector`) or `files` (`attach`) must lie inside the directories requests may use (`storage.import_roots`) when requests are confined, else the submit is 403; a location that carries a credential is 400. The run's job gets what the import steps that run need, as the hub's own jobs do: the stored credential of an object-store location's provider, the Hugging Face token and the organisation's mirror for a hub entry, and the caller as `FRONTIER_USER` for files they supply (`docs/spec/hub-catalog.md`, "Contract for the app") | `dataset` (`dataset_version`)                                                                                                                   |
+| `hf_source` … `dataset_sink` | always                                                                                                                                                                                                                                                                                                                                                              | the data kinds of `frontier_data.pipeline`, in process                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | the sink: `dataset`                                                                                                                             |
+| `recipe`                     | a dataset reaches `dataset`                                                                                                                                                                                                                                                                                                                                         | `frontier_prep versions init` if the dataset has no versions, then the recipe in the node's `text`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `dataset` with the new `version`                                                                                                                |
+| `training_run`               | a dataset reaches `dataset`                                                                                                                                                                                                                                                                                                                                         | `frontier_train train` (`config`, `epochs`, `overrides`; the train-ready gate applies unless `allow_ungated`). With a base model (`base_source` `hub`, `package` or `run` and `base_ref`: a hub model id, `name@version`, a run id) it runs `frontier_train finetune --base` instead: a hub model goes by its id and is fetched by the job into the raw files of the hub (`storage.raw_dir`), a package or a run is resolved by the server to the file the job opens (`base_dir`). A base that is asked for and not chosen fails the step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `model` (`run`, as soon as the run exists; `name` is its output directory); when it fine-tunes, `base` (below)                                  |
+| `inference`                  | a `training_run` step feeds `model`, or the node names a model (`model_source` `run` or `package` with `model_ref`; the server resolves it to `model_dir`)                                                                                                                                                                                                          | `frontier_train infer` on the samples (`split`, `ids`, `first`) of the dataset wired in, named, or trained on; the predictions are attached to a run made for them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `predictions` (`predictions`: that run)                                                                                                         |
+| `evaluate`                   | an `inference` step feeds `predictions`, or a `training_run` step feeds `model`, or the node names a model                                                                                                                                                                                                                                                          | fed by predictions: `frontier_eval run` per benchmark on them, no second inference, attached to the run that holds them; otherwise `frontier_eval evaluate`; with `include_uq` and a checkpoint, `frontier_train predict` on the validation split and `frontier_eval uq`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `report` (`artifact`: the evaluation directory), `model` (the run, when there is one)                                                           |
+| `input`                      | always                                                                                                                                                                                                                                                                                                                                                              | `frontier_data inputs`: typed parameters (`fields`, or a `table`) and a geometry (`geometry_source`: a parametric `geometry` such as `ahmed` at `resolution`, `geometry_files`, or the samples `ids` of the dataset wired in) as an input dataset, every case in the `test` split; checked against the contract of the model wired in or named (`model_source`, `model_ref`), when there is one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `dataset` (`dataset_version`)                                                                                                                   |
+| `adapt`                      | a dataset reaches `dataset` and a model reaches `model` or is named                                                                                                                                                                                                                                                                                                 | `frontier_train compat` for the verdict (unless `fixes` is given), then `frontier_prep adapt` on a copy of the dataset: the fixes as a recipe (`values` for parameters the model needs); a dataset that fits as it is passes through                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `dataset` (`dataset_version`)                                                                                                                   |
+| `optimise`                   | a model reaches `model` or is named                                                                                                                                                                                                                                                                                                                                 | `frontier_train optimise`: the parameters `free` of the parametric `geometry` moved (`method`, `budget`, `starts`, `bounds`, `fixed`, `conditions`, `checks`, `minimise`, `trust_z`, `resolution`) to minimise what the model predicts; each evaluation is a `step.metric` (`optimise/best`) and a metric of the run that holds the results; `optimum.json` is attached to it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `metrics` (`run`: the one that holds the search), `dataset` (`dataset_version`: the optimum's geometry), `optimum` (`artifact`: `optimum.json`) |
+| `report`                     | an `evaluate` step feeds `report`, or a `training_run` step feeds `model` (then it evaluates first, without uncertainty)                                                                                                                                                                                                                                            | `frontier_eval report`, attached to the run                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `report`, `model` (the run)                                                                                                                     |
+| `service.in`, `service.out`  | never: the Request and Response nodes of a served board are boundaries, not steps (`docs/spec/api.md`, "Services"). The canvas leaves them out of the export; a runner that meets one passes through it (`succeeded` at once, a Response passing on the outputs wired into it). The service runtime, not a board run, executes the steps between them once per call | nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `service.out`: what reaches it                                                                                                                  |
 
 An evaluation is complete without a report after it.
 
@@ -330,12 +333,12 @@ evaluation of the training split is a smoke evaluation without a verdict.
 **Automatic rules.** A step's `trigger` parameter says when it runs without being asked;
 the server decides, from events it receives anyway:
 
-| `trigger` | Fires when | What runs |
-|---|---|---|
-| `checkpoint` | a `step.checkpoint` of a step it needs arrives while the run is open | an inference job next to the running pipeline (`POST …/inference` semantics, cause `trigger`) on that checkpoint. `trigger.fired` is appended for the step; when the job succeeds, `step.output` binds its predictions on the step, which is still `waiting` |
-| `upstream` | a run ended in which the step was left out by the range while what it needs ran and succeeded | a run of the board restricted to the step (`range {from: X, to: X}`), with `trigger.fired` in it |
-| `dataset_version` | a data-preparation job wrote a new version of the dataset the step names | the same |
-| `schedule` | `every_min` minutes passed since it last ran (the period starts when the rule is first seen) | the same |
+| `trigger`         | Fires when                                                                                    | What runs                                                                                                                                                                                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `checkpoint`      | a `step.checkpoint` of a step it needs arrives while the run is open                          | an inference job next to the running pipeline (`POST …/inference` semantics, cause `trigger`) on that checkpoint. `trigger.fired` is appended for the step; when the job succeeds, `step.output` binds its predictions on the step, which is still `waiting` |
+| `upstream`        | a run ended in which the step was left out by the range while what it needs ran and succeeded | a run of the board restricted to the step (`range {from: X, to: X}`), with `trigger.fired` in it                                                                                                                                                             |
+| `dataset_version` | a data-preparation job wrote a new version of the dataset the step names                      | the same                                                                                                                                                                                                                                                     |
+| `schedule`        | `every_min` minutes passed since it last ran (the period starts when the rule is first seen)  | the same                                                                                                                                                                                                                                                     |
 
 Per node: one job in flight, the newest request replaces one that waits, and starts are
 `min_interval_s` apart. A rule of a board run waits while the board has a run that is not
@@ -382,28 +385,28 @@ runner passes them through.
 
 The server, on append:
 
-* drops `run.submitted`, `run.cancel_requested`, `run.archived` and `run.restored` from a
+- drops `run.submitted`, `run.cancel_requested`, `run.archived` and `run.restored` from a
   runner: only the server says those;
-* fills in what a producer may leave out: `queued` before `running` for a step that was
+- fills in what a producer may leave out: `queued` before `running` for a step that was
   `pending` or `waiting`, and `waiting -> queued` (cause `upstream`) for every step whose
   `needs` have all succeeded, written before the producer's next event;
-* drops, with a warning in its own log, an event the transition table does not allow, and
+- drops, with a warning in its own log, an event the transition table does not allow, and
   a repeated report of the state a step is already in;
-* registers a dataset output that names a directory (`name`) and has no `id`, and writes
+- registers a dataset output that names a directory (`name`) and has no `id`, and writes
   the id into the output;
-* writes `step.log {ref: "jobs/<job>", offset, bytes}` when a step ends: the part of the
+- writes `step.log {ref: "jobs/<job>", offset, bytes}` when a step ends: the part of the
   job's log between the step's `running` line and the line that ended it (a runner's
   own `step.log` is dropped). `GET …/pipeline-runs/{run}/steps/{step}/log[?tail=200]`
   returns those lines without the event lines, and, while the step runs, what it has
   written so far;
-* closes the log when the job ends without `run.finished`: on failure the reason (the
+- closes the log when the job ends without `run.finished`: on failure the reason (the
   job's error, else the last line of its log, or that line's `message` when it is a JSON
   log record) goes on the step that was running; when
   none was running and a step had already failed, nothing else fails; when nothing had
   failed either, the first step due does. The rest are `skipped` because of that step. On
   cancel the open steps are `cancelled`. A runner that prints nothing therefore still
   yields a complete log;
-* closes the log in the same way when the job is failed because its worker stopped
+- closes the log in the same way when the job is failed because its worker stopped
   renewing its lease: the step that was running is `failed` with cause `timeout`.
 
 `prev` is the SHA-256 of the previous event as canonical JSON by the engine's exporter
