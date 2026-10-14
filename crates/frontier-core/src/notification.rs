@@ -369,7 +369,10 @@ mod tests {
         assert_eq!(v["level"], "error");
         assert_eq!(v["subject"]["type"], "step");
         assert_eq!(v["subject"]["job"], "j1");
-        assert!(v["subject"].get("board").is_none(), "empty fields are left out");
+        assert!(
+            v["subject"].get("board").is_none(),
+            "empty fields are left out"
+        );
         assert_eq!(serde_json::from_value::<Notification>(v).unwrap(), n);
         assert!(Level::Error.is_urgent() && !Level::Success.is_urgent());
         assert_eq!(Level::parse("warning"), Some(Level::Warning));

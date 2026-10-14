@@ -35,7 +35,11 @@ pub fn from_bracketed(line: &str) -> String {
     let Some((name, words)) = rest.split_once("] ") else {
         return line.to_string();
     };
-    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return line.to_string();
     }
     let level = if words.starts_with("could not") || words.starts_with("failed") {
@@ -51,8 +55,11 @@ pub fn from_bracketed(line: &str) -> String {
 /// Whether a JSON value is a log record, as opposed to the JSON a command printed as its
 /// result: an object with `ts`, `level` and `message`.
 pub fn is_record(v: &Value) -> bool {
-    v.as_object()
-        .is_some_and(|o| ["ts", "level", "message"].iter().all(|k| o.contains_key(*k)))
+    v.as_object().is_some_and(|o| {
+        ["ts", "level", "message"]
+            .iter()
+            .all(|k| o.contains_key(*k))
+    })
 }
 
 #[cfg(test)]
@@ -61,7 +68,12 @@ mod tests {
 
     #[test]
     fn a_record_is_one_json_line_with_the_keys_the_log_pages_read() {
-        let line = record("warn", "frontier_worker", "lease lost\nretrying", json!({"job": "j1"}));
+        let line = record(
+            "warn",
+            "frontier_worker",
+            "lease lost\nretrying",
+            json!({"job": "j1"}),
+        );
         assert!(!line.contains('\n'));
         let v: Value = serde_json::from_str(&line).unwrap();
         assert!(is_record(&v));
@@ -77,13 +89,15 @@ mod tests {
     #[test]
     fn bracketed_lines_become_records_and_other_lines_stay() {
         let v: Value =
-            serde_json::from_str(&from_bracketed("[frontier-worker] started: python -m x")).unwrap();
+            serde_json::from_str(&from_bracketed("[frontier-worker] started: python -m x"))
+                .unwrap();
         assert_eq!(v["logger"], "frontier_worker");
         assert_eq!(v["message"], "started: python -m x");
         assert_eq!(v["level"], "info");
-        let failed: Value =
-            serde_json::from_str(&from_bracketed("[frontier-server] could not register /d: no manifest"))
-                .unwrap();
+        let failed: Value = serde_json::from_str(&from_bracketed(
+            "[frontier-server] could not register /d: no manifest",
+        ))
+        .unwrap();
         assert_eq!(failed["level"], "error");
         for other in ["epoch 3", "[1, 2]", "[not a name] x", "[x]"] {
             assert_eq!(from_bracketed(other), other);
