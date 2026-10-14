@@ -45,9 +45,15 @@ def _doc(out: Path, steps: dict[str, Any] | None = None, **train: Any) -> dict[s
 
 
 def test_steps_report_running_progress_and_outputs_and_a_failure_skips_what_follows(
-    tmp_path: Path, capfd: Any
+    tmp_path: Path, capfd: Any, monkeypatch: Any
 ) -> None:
-    # the training config does not exist: the step fails with the tool's last line
+    from frontier_data import board_run
+
+    def missing_config(self: Any, step: str, argv: list[str], env: Any = None) -> tuple[int, str]:
+        self._tail[step] = ["configuration not found: no-such-config"]
+        return 2, self._tail[step][-1]
+
+    monkeypatch.setattr(board_run.BoardRun, "_child", missing_config)
     ok = run_board(_doc(tmp_path, config="no-such-config"), workers=1)
     events = _events(capfd.readouterr().out)
     assert not ok

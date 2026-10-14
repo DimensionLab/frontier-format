@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 # The Well ingest reads HDF5; the MeshGraphNets TFRecord parser needs nothing extra.
 ingest = ["h5py>=3.10"]
+test = ["pytest>=8", "meshio>=5", "h5py>=3.10"]
 
 [project.scripts]
 frontier-data = "frontier_data.cli:main"

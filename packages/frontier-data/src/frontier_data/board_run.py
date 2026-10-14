@@ -1295,7 +1295,14 @@ def prediction_files(directory: Path) -> list[tuple[Path, str]]:
     """What a viewer needs of a predictions directory, under the artifact names it is read
     by: `predictions/<sample>.arrow`, then `predictions/manifest.json` and `summary.json`
     (last, so a manifest on the server never names a sample that is not there yet)."""
+    import tarfile
+
     files = [(p, f"predictions/{p.name}") for p in sorted(directory.glob("*.arrow"))]
+    for store in sorted(directory.glob("*.zarr")):
+        packed = store.with_suffix(".zarr.tar")
+        with tarfile.open(packed, "w") as archive:
+            archive.add(store, arcname=store.name)
+        files.append((packed, f"predictions/{packed.name}"))
     files += [
         (directory / n, f"predictions/{n}")
         for n in ("manifest.json", "summary.json")
