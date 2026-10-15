@@ -54,6 +54,12 @@ Per sample, exactly one of:
   attrs `spacing`, `origin`, `boundary_conditions`.
 - `points.zarr`: point cloud: `points (N,D)`, `fields/<name>`.
 
+New Frontier writers use the Zarr v3 `default` chunk-key encoding with separator `.`
+(for example, `c.0.0.0`). Flat keys avoid a directory for each chunk dimension, which
+can consume substantial quota on network filesystems. Readers follow each array's
+metadata and also accept existing `/` keys (`c/0/0/0`); existing datasets need no
+conversion. Both encodings are part of the same dataset format.
+
 Time: transient samples carry `times (T,)` f64 at the group root and every time-dependent
 array has time as its **first** axis, chunked one step (or a few) per chunk so a viewer or
 loader can fetch a single step. Every field array carries the attribute

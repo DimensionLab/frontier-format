@@ -8,7 +8,7 @@ import pytest
 import zarr
 
 from frontier_data import Dataset, DatasetWriter
-from frontier_data.storage_layout import chunk_inventory, repack_dataset
+from frontier_data.storage_layout import chunk_inventory, chunk_key, repack_dataset
 
 
 def dataset(path):
@@ -53,8 +53,11 @@ def test_flat_clone_is_lossless_independent_metadata_and_sparse_aware(tmp_path):
     assert isinstance(partial, zarr.Array) and isinstance(scalar, zarr.Array)
     np.testing.assert_array_equal(partial[:], np.arange(35).reshape(5, 7))
     assert scalar[()] == 7.0
-    old = source / "samples/a/grid.zarr/fields/u/c/0/0/0/0/0"
-    new = out / "samples/a/grid.zarr/fields/u/c.0.0.0.0.0"
+    array = source / "samples/a/grid.zarr/fields/u"
+    metadata = json.loads((array / "zarr.json").read_text())
+    source_chunks, _ = chunk_inventory(array, metadata)
+    old = source_chunks[(0, 0, 0, 0, 0)]
+    new = out / "samples/a/grid.zarr/fields/u" / chunk_key((0, 0, 0, 0, 0), ".")
     assert old.stat().st_ino == new.stat().st_ino
     assert not new.stat().st_mode & 0o222
     assert not list(out.rglob("c/"))
@@ -78,12 +81,17 @@ def test_flat_clone_rejects_missing_chunks_in_strict_mode(tmp_path):
     assert not list(tmp_path.glob(".out-*"))
 
 
-@pytest.mark.parametrize("key", ["c/00/0/0/0/0", "c/99/0/0/0/0", "c.0.0.0.0.0"])
-def test_flat_clone_rejects_duplicate_noncanonical_and_wrong_separator_keys(tmp_path, key):
+@pytest.mark.parametrize("kind", ["noncanonical", "out-of-bounds", "wrong-separator"])
+def test_flat_clone_rejects_duplicate_noncanonical_and_wrong_separator_keys(tmp_path, kind):
     source = tmp_path / "source"
     dataset(source)
     array = source / "samples/a/grid.zarr/fields/u"
-    bad = array / key
+    metadata = json.loads((array / "zarr.json").read_text())
+    separator = metadata["chunk_key_encoding"]["configuration"]["separator"]
+    first = "00" if kind == "noncanonical" else "99" if kind == "out-of-bounds" else "0"
+    if kind == "wrong-separator":
+        separator = "/" if separator == "." else "."
+    bad = array / separator.join(["c", first, "0", "0", "0", "0"])
     bad.parent.mkdir(parents=True, exist_ok=True)
     bad.write_bytes(b"invalid")
     with pytest.raises(ValueError, match="chunk"):
@@ -105,3 +113,33 @@ def test_flat_clone_rejects_symlinks_and_existing_targets(tmp_path):
 def test_chunk_inventory_rejects_unsupported_encodings(tmp_path):
     with pytest.raises(ValueError, match="default chunk keys"):
         chunk_inventory(tmp_path, {"zarr_format": 2})
+
+
+def test_frontier_writes_flat_arrays_and_still_reads_legacy_nested_fields(tmp_path):
+    writer = DatasetWriter(tmp_path, "flat-default")
+    values = np.arange(72, dtype=np.float32).reshape(3, 2, 3, 4, 1)
+    writer.write_grid_sample(
+        "a",
+        fields={"u": values},
+        times=[0, 1, 2],
+        spacing=[1, 1, 1],
+        static={"body": np.zeros((2, 3, 4))},
+    )
+    writer.finalize()
+    store = tmp_path / "samples/a/grid.zarr"
+    for path in store.rglob("zarr.json"):
+        metadata = json.loads(path.read_text())
+        if metadata["node_type"] == "array":
+            assert metadata["chunk_key_encoding"]["configuration"]["separator"] == "."
+            assert not (path.parent / "c").is_dir()
+    np.testing.assert_array_equal(Dataset(tmp_path).sample("a").times, [0, 1, 2])
+    array = store / "fields/u"
+    metadata = json.loads((array / "zarr.json").read_text())
+    chunks, _ = chunk_inventory(array, metadata)
+    for index, path in chunks.items():
+        nested = array / chunk_key(index, "/")
+        nested.parent.mkdir(parents=True, exist_ok=True)
+        path.rename(nested)
+    metadata["chunk_key_encoding"]["configuration"]["separator"] = "/"
+    (array / "zarr.json").write_text(json.dumps(metadata))
+    np.testing.assert_array_equal(Dataset(tmp_path).sample("a").field("u"), values)

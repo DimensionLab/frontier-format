@@ -209,7 +209,12 @@ def _write_array(
         chunks = (min(CHUNK_ROWS, max(data.shape[0], 1)),) + tuple(data.shape[1:])
     chunks = tuple(max(int(c), 1) for c in chunks)
     arr = group.create_array(
-        name, shape=data.shape, dtype=data.dtype, chunks=chunks, compressors=_compressors()
+        name,
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=chunks,
+        compressors=_compressors(),
+        chunk_key_encoding={"name": "default", "configuration": {"separator": "."}},
     )
     if data.size:
         arr[...] = data

@@ -280,7 +280,13 @@ def _root_attrs(root: Any, kind: str, times: np.ndarray | None, extra: Mapping[s
         }
     )
     if times is not None:
-        arr = root.create_array("times", shape=times.shape, dtype=np.float64, chunks=times.shape)
+        arr = root.create_array(
+            "times",
+            shape=times.shape,
+            dtype=np.float64,
+            chunks=times.shape,
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "."}},
+        )
         arr[...] = times
         arr.attrs["dims"] = ["time"]
 

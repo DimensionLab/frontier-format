@@ -42,9 +42,16 @@ def _scale_field(root: Path, sid: str, factor: float) -> None:
     s = Dataset(root).sample(sid)
     arr = s.array("p")
     data = np.asarray(arr[...]) * factor
+    chunk_key_encoding = arr.metadata.to_dict()["chunk_key_encoding"]
     g: Any = zarr.open_group(str(s.store_path), mode="r+")
     shutil.rmtree(s.store_path / "fields" / "p")
-    a = g["fields"].create_array("p", shape=data.shape, dtype=data.dtype, chunks=arr.chunks)
+    a = g["fields"].create_array(
+        "p",
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=arr.chunks,
+        chunk_key_encoding=chunk_key_encoding,
+    )
     a[...] = data
     a.attrs["dims"] = arr.attrs["dims"]
 
