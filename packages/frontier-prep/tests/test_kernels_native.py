@@ -2,7 +2,9 @@
 """The Rust kernels (``frontier_native.prep``) against the numpy reference kernels.
 
 Every comparison is bitwise: arrays by dtype, shape and bytes, audit dicts by key order,
-value type and IEEE bits (a NaN matches a NaN). Inputs: the regression meshes (seams,
+value type and IEEE bits (a NaN matches a NaN). Bounding-box signed zeros are
+numerically equal: NumPy extrema choose their sign differently across CPU backends.
+Inputs: the regression meshes (seams,
 non-manifold fans, degenerate and duplicate faces, flipped faces, a Mobius strip, many
 components), random triangle soups over a small coordinate grid (many coincident vertices,
 repeated indices, non-manifold edges), and degenerate input: empty, a single triangle,
@@ -130,6 +132,8 @@ def _bits(x: float) -> bytes:
 def _same_value(a: Any, b: Any, where: str) -> None:
     assert type(a) is type(b), (where, type(a), type(b))
     if isinstance(a, float):
+        if where.startswith("bounds[") and a == b == 0.0:
+            return
         assert _bits(a) == _bits(b), (where, a, b)
     elif isinstance(a, list):
         assert len(a) == len(b), where
