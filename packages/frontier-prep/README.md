@@ -55,14 +55,14 @@ Every command prints JSON with `--json`. Exit codes: 0 ok, 1 error, 2 blocked (a
 
 ## Ops
 
-| Category       | Ops                                                                                                            |
-| -------------- | -------------------------------------------------------------------------------------------------------------- |
-| fields         | `rename`, `map`, `cast_location`, `components`, `nan_fix`, `outlier_detect`, `smooth`, `normalize`             |
-| units, scalars | `units.convert`, `scalars.derive`                                                                              |
+| Category       | Ops                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| fields         | `rename`, `map`, `cast_location`, `components`, `nan_fix`, `outlier_detect`, `smooth`, `normalize`                       |
+| units, scalars | `units.convert`, `scalars.derive`                                                                                        |
 | mesh           | `watertight_check`, `merge_seams`, `repair`, `orient_outward`, `transform`, `decimate`, `resample`, `part_ids`, `taubin` |
-| time           | `subsample`, `trim`, `align`, `drop_duplicate_frames`, `window_average`, `continuity_check`                    |
-| dataset        | `dedup`, `split`, `coverage`, `balance`, `select`, `merge`, `summarize`                                        |
-| quality        | `check`, `gate` (sets the `train-ready` tag when the required checks pass)                                     |
+| time           | `subsample`, `trim`, `align`, `drop_duplicate_frames`, `window_average`, `continuity_check`                              |
+| dataset        | `dedup`, `split`, `coverage`, `balance`, `select`, `merge`, `summarize`                                                  |
+| quality        | `check`, `gate` (sets the `train-ready` tag when the required checks pass)                                               |
 
 Op ids are `prep.<category>.<name>`, for example `prep.fields.map`. To add an op, subclass
 `frontier_prep.base.BaseOp`, register it with `@register` and publish it under the entry-point
