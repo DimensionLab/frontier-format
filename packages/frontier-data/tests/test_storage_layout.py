@@ -32,6 +32,8 @@ def dataset(path):
 def test_flat_clone_is_lossless_independent_metadata_and_sparse_aware(tmp_path):
     source, out = tmp_path / "source", tmp_path / "flat"
     expected = dataset(source)
+    (source / "provenance").mkdir()
+    (source / "provenance/parent-manifest.json").write_text('{"ancestor": true}\n')
     before = {str(p.relative_to(source)): p.read_bytes() for p in source.rglob("*") if p.is_file()}
     report = repack_dataset(source, out)
     assert report["implicit_fill_chunks"] > 0
@@ -39,6 +41,9 @@ def test_flat_clone_is_lossless_independent_metadata_and_sparse_aware(tmp_path):
     assert before == {
         str(p.relative_to(source)): p.read_bytes() for p in source.rglob("*") if p.is_file()
     }
+    assert (out / "provenance/parent-manifest.json").read_bytes() == (
+        source / "provenance/parent-manifest.json"
+    ).read_bytes()
     ds = Dataset(out)
     np.testing.assert_array_equal(ds.sample("a").field("u"), expected)
     np.testing.assert_array_equal(ds.sample("a").field("zero"), expected * 0)

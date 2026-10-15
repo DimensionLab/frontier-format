@@ -146,6 +146,8 @@ def repack_dataset(source: Path, out: Path, *, require_complete_chunks: bool = F
     inventory = []
     original_hash = _sha(source / "manifest.json")
     try:
+        if (source / "provenance").is_dir():
+            shutil.copytree(source / "provenance", partial / "provenance")
         for extra in source.iterdir():
             if extra.is_file() and extra.name not in ("manifest.json", "storage-layout.json"):
                 shutil.copy2(extra, partial / extra.name)
