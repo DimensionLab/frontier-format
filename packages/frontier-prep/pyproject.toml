@@ -20,6 +20,12 @@ dependencies = [
 [project.scripts]
 frontier-prep = "frontier_prep.cli:main"
 
+[project.optional-dependencies]
+gpu = ["cupy-cuda12x==14.2.0; sys_platform == 'linux'"]
+
+[project.entry-points."frontier.plugins"]
+prep = "frontier_prep"
+
 # First-party operations. Third-party packages add their own ops under the same group:
 # <op id> = "<module>:<Op class or instance>"
 [project.entry-points."frontier.ops"]

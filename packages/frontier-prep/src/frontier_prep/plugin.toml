@@ -1,0 +1,22 @@
+schema = 1
+id = "frontier-prep"
+kind = "operation"
+name = "Frontier data preparation"
+version = "0.9.3"
+summary = "Versioned data preparation, mesh operations and quality checks"
+licence = "Apache-2.0"
+maturity = "verified-synthetic"
+
+[[optional]]
+package = "cupy-cuda12x"
+module = "cupy"
+licence = "MIT"
+purpose = "Opt-in float64 CUDA surface smoothing; install frontier-prep[gpu] on Linux"
+flag = "requires a CUDA-compatible NVIDIA driver"
+
+[author]
+name = "DimensionLab"
+company = "DimensionLab s.r.o."
+
+[api]
+ops = ">=1,<2"

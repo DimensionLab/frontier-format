@@ -9,6 +9,7 @@ from frontier_prep.ops import (  # noqa: F401 - registration side effect
     fields,
     mesh,
     quality,
+    smoothing,
     time,
     units,
 )
