@@ -106,10 +106,13 @@ def write_transient_prediction(
     boundary_conditions: Mapping[str, Any] | None = None,
     static: Mapping[str, np.ndarray] | None = None,
     write_zarr: bool = True,
+    field_units: Mapping[str, str] | None = None,
 ) -> Path:
     """Write ``<sid>.npz`` + ``<sid>.json`` (+ ``<sid>.zarr``). ``pred[name]`` and
     ``true[name]`` are ``(T, X, Y[, Z], C)`` for ``kind="grid"`` or ``(T, N, C)`` for
-    ``"mesh"`` / ``"point_cloud"`` (then ``points`` is required, ``cells`` for a mesh)."""
+    ``"mesh"`` / ``"point_cloud"`` (then ``points`` is required, ``cells`` for a mesh).
+    ``field_units`` maps original field names to units; prediction, truth, signed error
+    and ensemble standard deviation retain the same units. No unit conversion occurs."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     times = np.asarray(times, dtype=np.float64)
@@ -141,6 +144,8 @@ def write_transient_prediction(
         arrays["spacing"] = np.asarray(spacing, dtype=np.float64)
     np.savez_compressed(out_dir / f"{sample_id}.npz", **arrays)
     meta = {"id": sample_id, "kind": kind, "n_steps": int(len(times)), **dict(info or {})}
+    if field_units is not None:
+        meta["field_units"] = dict(field_units)
     if len(times) > 1:
         meta.setdefault("dt", float(np.median(np.diff(times))))
     write_json(out_dir / f"{sample_id}.json", meta)
@@ -164,6 +169,7 @@ def write_transient_prediction(
             static,
             std,
             str(meta.get("time_units", "s")),
+            field_units,
         )
     return out_dir / f"{sample_id}.npz"
 
@@ -182,6 +188,7 @@ def _write_store(
     static: Mapping[str, np.ndarray] | None,
     std: Mapping[str, np.ndarray] | None = None,
     time_units: str = "s",
+    field_units: Mapping[str, str] | None = None,
 ) -> None:
     """Reuse the dataset writers in a scratch directory, then move the store into place."""
     from frontier_data.arrays import write_grid_sample, write_mesh_sample, write_points_sample
@@ -194,6 +201,12 @@ def _write_store(
         fields[f"{k}_err"] = pred[k] - true[k]
         if std is not None and k in std:
             fields[f"{k}_std"] = std[k]
+    units = {
+        f"{name}_{suffix}": unit
+        for name, unit in (field_units or {}).items()
+        for suffix in ("pred", "true", "err", "std")
+        if f"{name}_{suffix}" in fields
+    }
     tmp = path.parent / f".{path.stem}.tmp"
     if tmp.exists():
         shutil.rmtree(tmp)
@@ -203,6 +216,7 @@ def _write_store(
             tmp,
             "s",
             fields=fields,
+            field_units=units,
             times=times,
             time_units=time_units,
             ndim=nd,
@@ -218,6 +232,7 @@ def _write_store(
             points=points,
             cells=cells,
             fields=fields,
+            field_units=units,
             times=times,
             static=static,
             time_units=time_units,
@@ -229,12 +244,20 @@ def _write_store(
             "s",
             points=points,
             fields=fields,
+            field_units=units,
             times=times,
             static=static,
             time_units=time_units,
         )
     else:
         raise ValueError("mesh / point_cloud predictions need `points`")
+    if units:
+        import zarr
+
+        # Dataset writers put units in meta.json; prediction archives retain only the store.
+        store = zarr.open_group(str(tmp / "samples" / "s" / STORE_NAMES[kind]), mode="a")
+        for name, unit in units.items():
+            store[f"fields/{name}"].attrs["units"] = unit
     if path.exists():
         shutil.rmtree(path)
     shutil.move(str(tmp / "samples" / "s" / STORE_NAMES[kind]), str(path))
