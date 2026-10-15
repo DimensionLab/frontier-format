@@ -42,11 +42,57 @@ expanding dependency ranges; private imports do not become stable public interfa
 | `geometry`   | `frontier_data.geometry`   |
 | `converters` | `frontier_hub.converters`  |
 | `hosts`      | `frontier_deploy.hosts`    |
+| `models`     | `frontier_train.models`    |
 
 These interfaces currently expose API `1.0.0`. Declare every interface the plugin
 requires or provides under `[api]`, using PEP 440 version ranges. Unknown required
 interfaces and unsatisfied ranges prevent loading. Existing plugins without API
 metadata remain usable through the legacy v1 interface, with a compatibility warning.
+
+## Model registration modules
+
+A model package registers its factories when its entry-point module is imported. The
+loader checks the manifest, dependencies and disable state first. It does not invoke an
+entry-point function. For example, a package released as `17.3.0` can declare:
+
+```toml
+# pyproject.toml
+[project.entry-points."frontier.plugins"]
+acme-models = "acme_models"
+
+[project.entry-points."frontier_train.models"]
+acme-models = "acme_models.registration"
+```
+
+Ship this manifest as `acme_models/plugin.toml`:
+
+```toml
+schema = 1
+id = "acme-models"
+kind = "model"
+name = "Acme research models"
+version = "17.3.0"
+licence = "Apache-2.0"
+
+[api]
+models = ">=1,<2"
+```
+
+Use `frontier_train.models.register(name)` for surface factories or
+`frontier_train.transient.models.register(name, kinds)` for time-stepping factories.
+The models API covers those registration functions and the constructor/forward tensor
+contracts documented in their modules. Other trainer internals remain private.
+Declare tested `frontier-train` dependency ranges as well as `frontier-plugins>=1,<2`.
+The plugin version must match its own distribution, not the trainer or application.
+
+Discovery is cached for the process. Activation failures log the plugin name, module and
+reason; registrations made by a failed import are removed from both model registries.
+Legacy registration modules without a manifest still load with a diagnostic. Restart the
+worker after installing, enabling or disabling plugins. Direct registration inside a
+research script remains available and does not pass through package discovery.
+
+This registers models for the trainer. Arbitrary models still need adapters for canvas
+configuration or serving; registering a factory does not generate either adapter.
 
 ## Compatibility policy
 

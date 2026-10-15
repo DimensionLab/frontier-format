@@ -32,6 +32,7 @@ API_VERSIONS: dict[str, str] = dict.fromkeys(
         "geometry",
         "converters",
         "hosts",
+        "models",
     ),
     "1.0.0",
 )
@@ -44,6 +45,7 @@ ENTRY_POINT_APIS = {
     "frontier_data.geometry": "geometry",
     "frontier_hub.converters": "converters",
     "frontier_deploy.hosts": "hosts",
+    "frontier_train.models": "models",
 }
 log = logging.getLogger("frontier.plugins")
 

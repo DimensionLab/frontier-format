@@ -83,6 +83,7 @@ def test_incompatible_plugin_is_never_imported(tmp_path, monkeypatch):
         ("geometry", "frontier_data.geometry"),
         ("converters", "frontier_hub.converters"),
         ("hosts", "frontier_deploy.hosts"),
+        ("models", "frontier_train.models"),
     ],
 )
 def test_disabled_extensions_never_activate(tmp_path, monkeypatch, family, group):
