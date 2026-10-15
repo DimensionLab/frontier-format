@@ -881,11 +881,13 @@
       "properties": {
         "rollout_steps": {
           "default": 32,
+          "minimum": 1,
           "title": "Rollout Steps",
           "type": "integer"
         },
         "horizon_threshold": {
           "default": 0.2,
+          "exclusiveMinimum": 0,
           "title": "Horizon Threshold",
           "type": "number"
         },
@@ -924,9 +926,129 @@
             }
           ],
           "default": null
+        },
+        "selection_metric": {
+          "default": "field",
+          "enum": [
+            "field",
+            "spatial_state",
+            "gradient",
+            "q"
+          ],
+          "title": "Selection Metric",
+          "type": "string"
+        },
+        "require_full_horizon": {
+          "default": false,
+          "title": "Require Full Horizon",
+          "type": "boolean"
         }
       },
       "title": "RolloutEvalConfig",
+      "type": "object"
+    },
+    "SpatialLossConfig": {
+      "additionalProperties": false,
+      "description": "Supervised derivative matching on uniform grids, in physical dataset units.",
+      "properties": {
+        "gradient_weight": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Gradient Weight",
+          "type": "number"
+        },
+        "gradient_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gradient Fields"
+        },
+        "q_weight": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Q Weight",
+          "type": "number"
+        },
+        "velocity_field": {
+          "default": "velocity",
+          "title": "Velocity Field",
+          "type": "string"
+        },
+        "solid_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Solid Field"
+        },
+        "solid_threshold": {
+          "default": 0.0,
+          "title": "Solid Threshold",
+          "type": "number"
+        },
+        "regions": {
+          "items": {
+            "$ref": "#/$defs/SpatialRegion"
+          },
+          "title": "Regions",
+          "type": "array"
+        },
+        "reference_floor": {
+          "default": 1e-06,
+          "exclusiveMinimum": 0.0,
+          "title": "Reference Floor",
+          "type": "number"
+        }
+      },
+      "title": "SpatialLossConfig",
+      "type": "object"
+    },
+    "SpatialRegion": {
+      "additionalProperties": false,
+      "description": "Axis-aligned box in dataset coordinates; overlapping multipliers use their maximum.",
+      "properties": {
+        "bounds": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Bounds",
+          "type": "array"
+        },
+        "weight": {
+          "default": 4.0,
+          "minimum": 1.0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "bounds"
+      ],
+      "title": "SpatialRegion",
       "type": "object"
     },
     "TransientDataConfig": {
@@ -1179,6 +1301,17 @@
           },
           "title": "Field Weights",
           "type": "object"
+        },
+        "spatial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpatialLossConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "TransientLossConfig",
@@ -1219,6 +1352,11 @@
           },
           "title": "Curriculum",
           "type": "array"
+        },
+        "activation_checkpointing": {
+          "default": false,
+          "title": "Activation Checkpointing",
+          "type": "boolean"
         }
       },
       "title": "UnrollConfig",
