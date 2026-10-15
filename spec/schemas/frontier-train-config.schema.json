@@ -877,6 +877,37 @@
       "title": "LeadConfig",
       "type": "object"
     },
+    "PrescribedSolidConfig": {
+      "additionalProperties": false,
+      "description": "Freeze selected grid fields at forecast-origin values where occupancy is exactly 1.\n\nThis explicitly assumes time-independent values inside fully solid cells. It is not\na no-slip condition: initial physical values, including nonzero ones, are preserved.\nMixed cells and auxiliary outputs remain predicted. No future observations are used.",
+      "properties": {
+        "mode": {
+          "const": "freeze_initial",
+          "default": "freeze_initial",
+          "title": "Mode",
+          "type": "string"
+        },
+        "solid_field": {
+          "minLength": 1,
+          "title": "Solid Field",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "solid_field",
+        "fields"
+      ],
+      "title": "PrescribedSolidConfig",
+      "type": "object"
+    },
     "RolloutEvalConfig": {
       "properties": {
         "rollout_steps": {
@@ -1246,6 +1277,17 @@
           ],
           "default": null,
           "title": "Fixed Fields"
+        },
+        "prescribed_solid": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrescribedSolidConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "synthetic": {
           "anyOf": [

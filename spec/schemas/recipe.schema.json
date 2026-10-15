@@ -79,6 +79,7 @@
             "prep.mesh.part_ids",
             "prep.mesh.repair",
             "prep.mesh.resample",
+            "prep.mesh.taubin",
             "prep.mesh.transform",
             "prep.mesh.watertight_check",
             "prep.params.set",
@@ -523,6 +524,25 @@
             "properties": {
               "params": {
                 "$ref": "#/$defs/op_prep_mesh_resample"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "prep.mesh.taubin"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/op_prep_mesh_taubin"
               }
             }
           }
@@ -1780,6 +1800,59 @@
       "required": [
         "n_points"
       ],
+      "type": "object"
+    },
+    "op_prep_mesh_taubin": {
+      "title": "prep.mesh.taubin",
+      "description": "Preserves connectivity and field values. Optional boolean (N,3) point-field mask holds coordinate components after each lambda/mu pair. CPU is default; CUDA is opt-in. Smoothing changes geometry and does not recompute the simulation fields.",
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "default": "cpu",
+          "enum": [
+            "cpu",
+            "cuda",
+            "auto"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "iterations": {
+          "default": 200,
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "lam": {
+          "default": 0.75,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Lam",
+          "type": "number"
+        },
+        "mu": {
+          "default": -0.76,
+          "exclusiveMaximum": 0,
+          "minimum": -1,
+          "title": "Mu",
+          "type": "number"
+        },
+        "fixed_mask_field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Static boolean point field (N,3); True holds that coordinate component.",
+          "title": "Fixed Mask Field"
+        }
+      },
       "type": "object"
     },
     "op_prep_mesh_transform": {
