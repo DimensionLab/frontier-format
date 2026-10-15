@@ -41,11 +41,12 @@
         },
         "mode": {
           "default": "none",
-          "description": "`none`: single-user, every request acts as the local administrator (only on a loopback address). `token`: API tokens. `oidc`: people sign in through an OpenID Connect provider; the CLI, workers and CI use API tokens.",
+          "description": "`none`: single-user, every request acts as the local administrator (only on a loopback address). `token`: API tokens. `oidc`: people sign in through an OpenID Connect provider; the CLI, workers and CI use API tokens. `supabase`: hosted/self-hosted account and private-project metadata preview.",
           "enum": [
             "none",
             "token",
-            "oidc"
+            "oidc",
+            "supabase"
           ],
           "title": "Authentication mode",
           "type": "string"
@@ -126,6 +127,30 @@
           "minimum": 1.0,
           "title": "Session lifetime (hours)",
           "type": "integer"
+        },
+        "supabase": {
+          "additionalProperties": false,
+          "properties": {
+            "issuer": {
+              "default": "",
+              "description": "Exact JWT issuer; defaults to <Supabase URL>/auth/v1. Configure explicitly for self-hosted Auth with a different issuer.",
+              "title": "Supabase session issuer",
+              "type": "string"
+            },
+            "publishable_key": {
+              "default": "",
+              "description": "Public publishable or legacy anon key. Never a service-role or secret key.",
+              "title": "Supabase publishable key",
+              "type": "string"
+            },
+            "url": {
+              "default": "",
+              "description": "Hosted or self-hosted Supabase base URL; HTTPS is required outside loopback.",
+              "title": "Supabase account authority",
+              "type": "string"
+            }
+          },
+          "type": "object"
         },
         "token_max_ttl_days": {
           "default": 0,

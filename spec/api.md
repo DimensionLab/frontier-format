@@ -700,7 +700,7 @@ subject to it: one rule per `(method, route)` in `frontier_auth::routes::RULES`
   `X-Frontier-Csrf: <csrf_token>`.
 - `401` `{error, status: "unauthenticated", auth: {mode, config_url, login_url,
 oidc_start_url?, local_session_url?}}` with `WWW-Authenticate: Bearer realm="frontier",
-error="invalid_token", error_description="…", auth_mode="none|token|oidc",
+error="invalid_token", error_description="…", auth_mode="none|token|oidc|supabase",
 auth_config="<url>/api/v1/auth/config"`.
 - `403` `{error, status: "forbidden", permission, required_role}`; `{…, status: "csrf"}`
   for a cookie request without the CSRF header; `{…, status: "forbidden_origin"}` from the
