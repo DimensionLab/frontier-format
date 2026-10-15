@@ -285,7 +285,7 @@
           "type": "string"
         },
         "registry": {
-          "default": "registry.dimensionlab.org",
+          "default": "docker.io/michaltakac",
           "description": "Registry and path the Frontier images are pulled from. The training image is `<registry>/frontier-trainer:<version>` and the server and worker image `<registry>/frontier:<version>`.",
           "title": "Container registry",
           "type": "string"
