@@ -1312,6 +1312,20 @@
             }
           ],
           "default": null
+        },
+        "temporal_weight": {
+          "default": 0.0,
+          "description": "Adjacent predicted increment MSE weight in train delta-std units; BPTT only.",
+          "minimum": 0.0,
+          "title": "Temporal Weight",
+          "type": "number"
+        },
+        "temporal_scale_floor": {
+          "default": 0.001,
+          "description": "Minimum delta std in normalized state units for temporal increment loss.",
+          "exclusiveMinimum": 0.0,
+          "title": "Temporal Scale Floor",
+          "type": "number"
         }
       },
       "title": "TransientLossConfig",
