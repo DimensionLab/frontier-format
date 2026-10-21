@@ -121,7 +121,9 @@ def query_snapshot(
     try:
         import icechunk as ic
     except ImportError as exc:
-        raise typer.BadParameter("Use Python 3.12+ and install frontier-data[snapshots] to read revisions") from exc
+        raise typer.BadParameter(
+            "Use Python 3.12+ and install frontier-data[snapshots] to read revisions"
+        ) from exc
     from arrayroute.snapshot import FilesystemRepository, Snapshot, SnapshotReadSession
     from frontier_data.query import SnapshotFieldReader, parse_selectors
 

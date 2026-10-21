@@ -329,3 +329,45 @@ def test_snapshot_field_requires_declared_metadata(tmp_path):
     sid = write.commit("metadata missing")
     with pytest.raises(ValueError, match="dims"):
         SnapshotFieldReader(SnapshotReadSession(Snapshot(location, sid)), "anonymous")
+
+
+def test_prepared_revision_is_queryable_with_its_units_and_lineage(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    ic = pytest.importorskip("icechunk")
+    import zarr
+
+    from arrayroute.preparation import Preparation
+    from arrayroute.snapshot import FilesystemRepository, Snapshot, SnapshotReadSession
+    from frontier_data.query import SnapshotFieldReader
+
+    location = FilesystemRepository(str(tmp_path / "prepared"))
+    repo = ic.Repository.create(ic.local_filesystem_storage(location.path))
+    write = repo.writable_session("main")
+    values = np.arange(3 * 9 * 7, dtype=np.float32).reshape(3, 9, 7)
+    attrs = {"dims": ["time", "x", "y"], "units": "m/s", "association": "cell"}
+    zarr.group(write.store).create_array("u", data=values, chunks=(1, 4, 4), attributes=attrs)
+    source = Snapshot(location, write.commit("velocity source"))
+    job = Preparation.create(
+        source,
+        branch="reverse",
+        job="reverse",
+        source="u",
+        output="minus_u",
+        chunks=(1, 4, 4),
+        task_shape=(1, 8, 8),
+        halo=(0, 0, 0),
+        dtype="f4",
+        operation="negative-v1",
+        parameters={},
+        attributes=attrs,
+    )
+    with ThreadPoolExecutor(2) as pool:
+        job.run(np.negative, pool)
+    published = job.publish()
+    field = SnapshotFieldReader(SnapshotReadSession(published), "minus_u")
+    result = field.read({"time": 1, "x": slice(2, 8, 2)})
+    assert result.values.tobytes() == (-values[1, 2:8:2]).tobytes()
+    assert result.units == "m/s" and result.association == "cell"
+    assert result.dimensions == ("x", "y") and result.snapshot_id == published.snapshot_id
+    assert repo.lookup_branch("main") == source.snapshot_id
