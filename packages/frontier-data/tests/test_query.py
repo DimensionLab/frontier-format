@@ -332,7 +332,9 @@ def test_snapshot_field_requires_declared_metadata(tmp_path):
 
 
 def test_prepared_revision_is_queryable_with_its_units_and_lineage(tmp_path):
+    import json
     from concurrent.futures import ThreadPoolExecutor
+    from datetime import UTC, datetime, timedelta
 
     ic = pytest.importorskip("icechunk")
     import zarr
@@ -365,9 +367,40 @@ def test_prepared_revision_is_queryable_with_its_units_and_lineage(tmp_path):
     with ThreadPoolExecutor(2) as pool:
         job.run(np.negative, pool)
     published = job.publish()
-    field = SnapshotFieldReader(SnapshotReadSession(published), "minus_u")
+    pin = job.output_pin(published)
+    repo.delete_branch("reverse")
+    cutoff = datetime.now(UTC) + timedelta(seconds=1)
+    repo.expire_snapshots(cutoff)
+    repo.garbage_collect(cutoff)
+    field = SnapshotFieldReader(SnapshotReadSession(published), "minus_u", retention=pin)
     result = field.read({"time": 1, "x": slice(2, 8, 2)})
     assert result.values.tobytes() == (-values[1, 2:8:2]).tobytes()
     assert result.units == "m/s" and result.association == "cell"
     assert result.dimensions == ("x", "y") and result.snapshot_id == published.snapshot_id
     assert repo.lookup_branch("main") == source.snapshot_id
+    assert field.retention_tag == pin.tag
+    with pytest.raises(ValueError, match="another field revision"):
+        SnapshotFieldReader(SnapshotReadSession(source), "u", retention=pin)
+    from typer.testing import CliRunner
+
+    from frontier_data.cli import app
+
+    args = [
+        "query-snapshot",
+        location.path,
+        "minus_u",
+        "--snapshot-id",
+        published.snapshot_id,
+        "--retention-token",
+        pin.token,
+        "--retention-purpose",
+        pin.purpose,
+    ]
+    viewed = CliRunner().invoke(app, args)
+    assert viewed.exit_code == 0, viewed.output
+    assert json.loads(viewed.output)["retention_tag"] == pin.tag
+    from arrayroute.retention import RetentionManager
+
+    RetentionManager(location).release(pin)
+    refused = CliRunner().invoke(app, args)
+    assert refused.exit_code != 0

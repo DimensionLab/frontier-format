@@ -73,6 +73,7 @@ def _query_field_output(reader, selectors, sample, field, engine, out, max_outpu
     result = {
         "sample": sample,
         "snapshot_id": reader.snapshot_id,
+        "retention_tag": reader.retention_tag,
         "field": field,
         "dimensions": reader.dimensions,
         "selected_dimensions": [
@@ -108,6 +109,10 @@ def query_snapshot(
     array_path: str,
     snapshot_id: str | None = None,
     branch: str | None = None,
+    retention_token: Annotated[
+        str | None, typer.Option(help="Verify this existing consumer reference before reading")
+    ] = None,
+    retention_purpose: str = "reader",
     select: Annotated[list[str] | None, typer.Option(help="Named index/slice")] = None,
     budget_mib: Annotated[int, typer.Option(min=1)] = 128,
     max_output_mib: Annotated[int, typer.Option(min=1)] = 1024,
@@ -124,6 +129,7 @@ def query_snapshot(
         raise typer.BadParameter(
             "Use Python 3.12+ and install frontier-data[snapshots] to read revisions"
         ) from exc
+    from arrayroute.retention import RetentionPin
     from arrayroute.snapshot import FilesystemRepository, Snapshot, SnapshotReadSession
     from frontier_data.query import SnapshotFieldReader, parse_selectors
 
@@ -135,7 +141,13 @@ def query_snapshot(
             else Snapshot.resolve(location, branch=branch or "main")
         )
         reader = SnapshotFieldReader(
-            SnapshotReadSession(pinned, buffer_bytes=budget_mib << 20), array_path
+            SnapshotReadSession(pinned, buffer_bytes=budget_mib << 20),
+            array_path,
+            retention=(
+                RetentionPin(pinned, retention_token, retention_purpose)
+                if retention_token is not None
+                else None
+            ),
         )
         _query_field_output(
             reader, parse_selectors(select or []), None, array_path, "icechunk", out, max_output_mib

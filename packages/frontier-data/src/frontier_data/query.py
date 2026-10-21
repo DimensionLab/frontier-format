@@ -14,6 +14,7 @@ from arrayroute.quality import ErrorAccumulator, ErrorAssessment
 from arrayroute.session import LocalReadSession
 
 if TYPE_CHECKING:
+    from arrayroute.retention import RetentionPin
     from arrayroute.snapshot import SnapshotReadSession
     from frontier_data.arrays import Sample
 
@@ -40,6 +41,7 @@ class ArrayFieldReader:
     units: str
     association: str
     snapshot_id: str | None = None
+    retention_tag: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -104,7 +106,19 @@ class SnapshotFieldReader(ArrayFieldReader):
     scientific metadata is an error, never filled from another dataset/revision.
     """
 
-    def __init__(self, session: SnapshotReadSession, array_path: str):
+    def __init__(
+        self,
+        session: SnapshotReadSession,
+        array_path: str,
+        *,
+        retention: RetentionPin | None = None,
+    ):
+        if retention is not None:
+            from arrayroute.retention import RetentionManager
+
+            if retention.snapshot != session.snapshot:
+                raise ValueError("Retention reference belongs to another field revision")
+            RetentionManager(session.snapshot.location).verify(retention)
         reader = session.open(array_path)
         attributes = session.attributes(array_path)
         dimensions = attributes.get("dims")
@@ -115,7 +129,12 @@ class SnapshotFieldReader(ArrayFieldReader):
             raise ValueError("Snapshot field must declare units and association")
         self.session = session
         super().__init__(
-            reader, tuple(dimensions), units, association, session.snapshot.snapshot_id
+            reader,
+            tuple(dimensions),
+            units,
+            association,
+            session.snapshot.snapshot_id,
+            retention.tag if retention is not None else None,
         )
 
 
