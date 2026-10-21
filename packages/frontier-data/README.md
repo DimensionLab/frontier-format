@@ -13,6 +13,9 @@ pip install --no-index --find-links wheels frontier-data
 ```
 
 The Well converter reads HDF5 and needs the extra `frontier-data[ingest]`.
+`frontier-data[readers]` installs the TensorStore and Zarrista reader engines;
+`frontier-data[server]` installs the SDK and HTTP client for server-backed board runs
+and remote execution. Local dataset inspection and Zarr-Python reads need neither extra.
 
 ## Example
 

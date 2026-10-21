@@ -1216,7 +1216,7 @@ class Sample:
 
     def _find_array(self, name: str, location: str | None, lod: int) -> Any:
         g = self._sub(lod)
-        if name.split("/", 1)[0] in ("fields", "cell_fields", "static", "coords"):
+        if name.split("/", 1)[0] in ("fields", "cell_fields", "static", "coords", "signals"):
             return g[name]
         order = {"point": ["fields"], "grid": ["fields"], "cell": ["cell_fields"]}.get(
             location or "", ["fields", "cell_fields"]
@@ -1245,7 +1245,7 @@ class Sample:
         return "cell"
 
     def _location_of(self, name: str, location: str | None, lod: int) -> str:
-        if name.split("/", 1)[0] in ("fields", "cell_fields", "static", "coords"):
+        if name.split("/", 1)[0] in ("fields", "cell_fields", "static", "coords", "signals"):
             return name.split("/", 1)[0]
         g = self._sub(lod)
         if location == "cell" or ("fields" not in g or name not in g["fields"]):

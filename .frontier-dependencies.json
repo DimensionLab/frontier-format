@@ -1,5 +1,7 @@
 {
   "repositories": [
-    "arrayroute"
+    "arrayroute",
+    "frontier-connectors",
+    "frontier-sdk"
   ]
 }
