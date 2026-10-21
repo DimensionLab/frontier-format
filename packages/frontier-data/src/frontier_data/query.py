@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -62,6 +63,39 @@ class ArrayFieldReader:
     def plan(self, selectors: Mapping[str, int | slice]) -> ReadPlan:
         return self.reader.plan(self.selection(selectors))
 
+    def describe(self, selectors: Mapping[str, int | slice]) -> dict[str, object]:
+        """Describe a normalized selection and estimated read costs without reading values."""
+        cost = self.plan(selectors)
+        spec = self.reader.backend.spec
+        return {
+            "snapshot_id": self.snapshot_id,
+            "retention_tag": self.retention_tag,
+            "dimensions": self.dimensions,
+            "selected_dimensions": [
+                d
+                for d, s in zip(self.dimensions, cost.selection, strict=True)
+                if isinstance(s, slice)
+            ],
+            "units": self.units,
+            "association": self.association,
+            "source_shape": spec.shape,
+            "source_chunks": spec.chunks,
+            "dtype": self.reader.backend.dtype.str,
+            "source_logical_bytes": spec.logical_bytes,
+            "selection": {
+                d: {"start": s.start, "stop": s.stop, "step": s.step} if isinstance(s, slice) else s
+                for d, s in zip(self.dimensions, cost.selection, strict=True)
+            },
+            "output_shape": cost.output_shape,
+            "output_bytes": cost.output_bytes,
+            "chunks_touched": cost.chunks_touched,
+            "decoded_bytes_upper_bound": cost.decoded_bytes_upper_bound,
+            "decode_amplification": cost.decode_amplification,
+            "read_buffer_bytes": self.reader.buffer_bytes,
+            "memory_scope": "Output and decoded-chunk estimate; excludes backend caches, "
+            "codec scratch and consumer-retained values",
+        }
+
     def read(
         self,
         selectors: Mapping[str, int | slice],
@@ -97,6 +131,41 @@ class ArrayFieldReader:
                 FieldResult(values, dimensions, self.units, self.association, self.snapshot_id),
             )
             del values
+
+    @contextmanager
+    def prefetch(
+        self,
+        selectors: Mapping[str, int | slice],
+        *,
+        stats: ReadStats | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> Iterator[Iterator[tuple[Tile, FieldResult]]]:
+        """Two-slot read overlap retaining the selected axes, units and revision.
+
+        Uses ArrayReader.prefetch's byte accounting and lifecycle. The callback must
+        be thread-safe; context exit waits for any native blocking read to finish.
+        """
+        selection = self.selection(selectors)
+        dimensions = tuple(
+            d for d, s in zip(self.dimensions, selection, strict=True) if isinstance(s, slice)
+        )
+        with self.reader.prefetch(selection, stats=stats, cancelled=cancelled) as blocks:
+
+            def wrap() -> Generator[tuple[Tile, FieldResult], None, None]:
+                for tile, values in blocks:
+                    yield (
+                        tile,
+                        FieldResult(
+                            values, dimensions, self.units, self.association, self.snapshot_id
+                        ),
+                    )
+                    del values
+
+            results = wrap()
+            try:
+                yield results
+            finally:
+                results.close()
 
 
 class SnapshotFieldReader(ArrayFieldReader):
@@ -152,21 +221,25 @@ class FieldReader(ArrayFieldReader):
         buffer_bytes: int = 128 << 20,
         session: LocalReadSession | None = None,
     ):
-        location = location or sample.native_location(name)
-        array = sample.array(name, location, lod)
-        info = next(
-            (
-                f
-                for f in sample.meta.fields
-                if f.name == name
-                and (
-                    location is None
-                    or f.location
-                    == {"fields": "node", "cell_fields": "cell"}.get(location, location)
-                )
-            ),
-            None,
-        )
+        declared = [f for f in sample.meta.fields if f.name == name]
+        if not declared:
+            raise ValueError(f"Field {name!r} is not declared in the sample metadata")
+        locations = sorted({f.location for f in declared})
+        if location is None:
+            if len(locations) != 1:
+                raise ValueError(f"Field {name!r} has multiple locations; choose {locations}")
+            location = locations[0]
+        groups = {"point": "fields", "cell": "cell_fields", "grid": "fields", "global": "signals"}
+        if location not in groups or location not in locations:
+            raise ValueError(f"Field {name!r} has no location {location!r}; choose {locations}")
+        if location == "grid" and sample.kind != "grid":
+            raise ValueError("Grid association requires a grid sample")
+        if location == "point" and sample.kind == "grid":
+            raise ValueError("Grid fields must declare their grid location")
+        info = next(f for f in declared if f.location == location)
+        array_name = f"{groups[location]}/{name}"
+        array = sample.array(array_name, location, lod)
+        self.location, self.lod = location, lod
         if session is not None and engine is not None and session.engine != engine:
             raise ValueError("Requested engine differs from the shared read session")
         self.session = session or LocalReadSession(
@@ -174,8 +247,8 @@ class FieldReader(ArrayFieldReader):
         )
         super().__init__(
             self.session.open(sample.store_path, array.path),
-            tuple(sample.dims(name, location, lod)),
-            info.units if info else "-",
+            tuple(sample.dims(array_name, location, lod)),
+            info.units,
             sample.location if location == "grid" else location,
         )
 
@@ -183,16 +256,24 @@ class FieldReader(ArrayFieldReader):
 def parse_selectors(items: list[str]) -> dict[str, int | slice]:
     selectors = {}
     for item in items:
+        if "=" not in item:
+            raise ValueError(f"Expected dimension=index or dimension=start:stop[:stride]: {item!r}")
         name, value = item.split("=", 1)
         if not name or name in selectors:
             raise ValueError(f"Empty or duplicate dimension in {item!r}")
         parts = value.split(":")
-        if len(parts) == 1:
-            selectors[name] = int(value)
-        elif len(parts) in (2, 3):
-            selectors[name] = slice(*(int(p) if p else None for p in parts))
-        else:
-            raise ValueError(f"Expected dimension=index or dimension=start:stop[:stride]: {item}")
+        try:
+            if len(parts) == 1:
+                selectors[name] = int(value)
+            elif len(parts) in (2, 3):
+                selectors[name] = slice(*(int(p) if p else None for p in parts))
+            else:
+                raise ValueError("Too many slice bounds")
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid selection {item!r}; use dimension=index or "
+                "dimension=start:stop[:stride] with integer array indices"
+            ) from exc
     return selectors
 
 

@@ -280,6 +280,10 @@ def test_snapshot_field_keeps_data_and_scientific_metadata_on_same_revision(tmp_
     assert result.values.tobytes() == data[1].tobytes()
     for _, tile in original.stream({"time": 1}):
         assert tile.snapshot_id == old_id and tile.units == "Pa"
+    with original.prefetch({"time": 1}) as tiles:
+        for _, tile in tiles:
+            assert tile.snapshot_id == old_id and tile.units == "Pa"
+            assert tile.values.tobytes() == data[1].tobytes()
     latest = SnapshotFieldReader(SnapshotReadSession(Snapshot.resolve(location)), "pressure")
     assert latest.read({}).units == "kPa"
     import json
@@ -404,3 +408,135 @@ def test_prepared_revision_is_queryable_with_its_units_and_lineage(tmp_path):
     RetentionManager(location).release(pin)
     refused = CliRunner().invoke(app, args)
     assert refused.exit_code != 0
+
+
+def test_description_reads_no_values_and_normalizes_selection():
+    from arrayroute import ArrayReader, ArraySpec
+    from frontier_data.query import ArrayFieldReader
+
+    class MetadataOnly:
+        spec = ArraySpec((100, 200, 3), (10, 20, 3), 4)
+        dtype = np.dtype("float32")
+
+        def read(self, selection):
+            raise AssertionError("Description must not load simulation fields")
+
+    reader = ArrayFieldReader(
+        ArrayReader(MetadataOnly()), ("time", "cell", "component"), "m/s", "cell", "revision-123"
+    )
+    description = reader.describe({"time": -1, "cell": slice(2, 1000, 3), "component": 1})
+    assert description["source_shape"] == (100, 200, 3)
+    assert description["selection"] == {
+        "time": 99,
+        "cell": {"start": 2, "stop": 200, "step": 3},
+        "component": 1,
+    }
+    assert description["selected_dimensions"] == ["cell"]
+    assert description["output_shape"] == (66,)
+    assert description["units"] == "m/s" and description["snapshot_id"] == "revision-123"
+    assert description["output_bytes"] == 66 * 4
+
+
+def test_prefetched_scientific_regions_keep_metadata_and_cancel(tmp_path):
+    from threading import Event
+
+    from arrayroute import ReadStats
+
+    values = np.arange(4 * 5 * 6, dtype=np.float32).reshape(4, 5, 6, 1)
+    writer = DatasetWriter(tmp_path, "prefetch pressure")
+    writer.write_grid_sample(
+        "case", fields={"p": values}, spacing=[1, 1, 1], field_units={"p": "Pa"}, location="cell"
+    )
+    writer.finalize()
+    reader = FieldReader(Dataset(tmp_path).sample("case"), "p", buffer_bytes=1200)
+    expected = values[:, 1:4, :, 0]
+    actual = np.empty_like(expected)
+    stats = ReadStats()
+    with reader.prefetch({"y": slice(1, 4), "component": 0}, stats=stats) as blocks:
+        for tile, field in blocks:
+            assert field.units == "Pa" and field.association == "cell"
+            assert field.dimensions == ("x", "y", "z")
+            actual[tile.destination] = field.values
+            del field
+    assert stats.requests > 1
+    np.testing.assert_array_equal(actual, expected)
+    cancelled = Event()
+    cancelled.set()
+    with reader.prefetch({}, cancelled=cancelled.is_set) as blocks:
+        with pytest.raises(InterruptedError):
+            next(blocks)
+
+
+@pytest.mark.parametrize("selection", ["time", "time=0.1", "x=1:2:3:4", "x=oops"])
+def test_selector_syntax_explains_array_indices(selection):
+    with pytest.raises(ValueError, match="dimension="):
+        parse_selectors([selection])
+
+
+def test_cli_explicit_association_uses_the_requested_array(tmp_path):
+    import json
+
+    from typer.testing import CliRunner
+
+    from frontier_data.cli import app
+
+    writer = DatasetWriter(tmp_path / "mesh", "same field name, distinct associations")
+    writer.write_mesh_sample(
+        "case",
+        points=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float32),
+        cells=np.array([[0, 1, 2, 3]]),
+        fields={"p": np.arange(4, dtype=np.float32)},
+        cell_fields={"p": np.array([99], dtype=np.float32)},
+        field_units={"p": "Pa"},
+        lod_levels=None,
+    )
+    writer.finalize()
+    for location, association, expected in [
+        ("point", "point", np.arange(4, dtype=np.float32)),
+        ("cell", "cell", np.array([99], dtype=np.float32)),
+    ]:
+        out = tmp_path / f"{location}.npy"
+        args = [
+            "query-field",
+            str(tmp_path / "mesh"),
+            "case",
+            "p",
+            "--location",
+            location,
+            "--out",
+            str(out),
+        ]
+        result = CliRunner().invoke(app, args)
+        assert result.exit_code == 0, result.output
+        receipt = json.loads(result.output)
+        assert receipt["association"] == association and receipt["units"] == "Pa"
+        assert receipt["source"]["location"] == location and receipt["source"]["lod"] == 0
+        np.testing.assert_array_equal(np.load(out, allow_pickle=False).ravel(), expected)
+    ambiguous = CliRunner().invoke(app, ["query-field", str(tmp_path / "mesh"), "case", "p"])
+    assert ambiguous.exit_code != 0 and "multiple locations" in ambiguous.output
+    invalid = CliRunner().invoke(
+        app, ["query-field", str(tmp_path / "mesh"), "case", "p", "--location", "cell_fields"]
+    )
+    assert invalid.exit_code != 0
+    missing = CliRunner().invoke(
+        app, ["query-field", str(tmp_path / "mesh"), "case", "p", "--lod", "99"]
+    )
+    assert missing.exit_code != 0
+
+
+def test_global_signal_selection_preserves_units(tmp_path):
+    writer = DatasetWriter(tmp_path, "global hydraulic measurements")
+    values = np.arange(4, dtype=np.float32)
+    writer.write_grid_sample(
+        "case",
+        fields={"p": np.zeros((4, 2, 2, 2, 1), dtype=np.float32)},
+        times=np.arange(4) * 0.1,
+        spacing=[1, 1, 1],
+        signals={"discharge": values},
+        field_units={"p": "Pa", "discharge": "m^3/s"},
+    )
+    writer.finalize()
+    reader = FieldReader(Dataset(tmp_path).sample("case"), "discharge")
+    result = reader.read({"time": slice(1, 4, 2)})
+    assert result.units == "m^3/s" and result.association == "global"
+    np.testing.assert_array_equal(result.values.ravel(), values[1:4:2])

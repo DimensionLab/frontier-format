@@ -40,6 +40,10 @@ def query_field(
         list[str] | None, typer.Option(help="Named index/slice, e.g. time=10 x=20:80")
     ] = None,
     engine: str = "zarr-python",
+    location: Annotated[
+        str | None, typer.Option(help="Scientific location: point, cell, grid or global")
+    ] = None,
+    lod: Annotated[int, typer.Option(min=0, help="Stored level of detail; 0 is finest")] = 0,
     budget_mib: Annotated[int, typer.Option(min=1)] = 128,
     max_output_mib: Annotated[
         int, typer.Option(min=1, help="Maximum exported array size; read buffers remain bounded")
@@ -53,42 +57,46 @@ def query_field(
     from frontier_data.query import FieldReader, parse_selectors
 
     try:
+        selected_sample = Dataset(dataset).sample(sample)
         reader = FieldReader(
-            Dataset(dataset).sample(sample), field, engine=engine, buffer_bytes=budget_mib << 20
+            selected_sample,
+            field,
+            location=location,
+            lod=lod,
+            engine=engine,
+            buffer_bytes=budget_mib << 20,
         )
         _query_field_output(
-            reader, parse_selectors(select or []), sample, field, engine, out, max_output_mib
+            reader,
+            parse_selectors(select or []),
+            sample,
+            field,
+            engine,
+            out,
+            max_output_mib,
+            {
+                "kind": "dataset",
+                "path": str(dataset.resolve()),
+                "location": reader.location,
+                "lod": reader.lod,
+            },
         )
     except (ValueError, KeyError, OSError, ImportError, MemoryError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
 
-def _query_field_output(reader, selectors, sample, field, engine, out, max_output_mib):
+def _query_field_output(reader, selectors, sample, field, engine, out, max_output_mib, source):
     from dataclasses import asdict
 
     from arrayroute import ReadStats
     from arrayroute.export import save_npy
 
-    cost = reader.plan(selectors)
     result = {
+        **reader.describe(selectors),
         "sample": sample,
-        "snapshot_id": reader.snapshot_id,
-        "retention_tag": reader.retention_tag,
         "field": field,
-        "dimensions": reader.dimensions,
-        "selected_dimensions": [
-            d
-            for d, s in zip(reader.dimensions, cost.selection, strict=True)
-            if isinstance(s, slice)
-        ],
-        "units": reader.units,
-        "association": reader.association,
-        "output_shape": cost.output_shape,
-        "output_bytes": cost.output_bytes,
-        "chunks_touched": cost.chunks_touched,
-        "decoded_bytes_upper_bound": cost.decoded_bytes_upper_bound,
-        "decode_amplification": cost.decode_amplification,
         "engine": engine,
+        "source": source,
     }
     if out is not None:
         stats = ReadStats()
@@ -150,7 +158,14 @@ def query_snapshot(
             ),
         )
         _query_field_output(
-            reader, parse_selectors(select or []), None, array_path, "icechunk", out, max_output_mib
+            reader,
+            parse_selectors(select or []),
+            None,
+            array_path,
+            "icechunk",
+            out,
+            max_output_mib,
+            {"kind": "snapshot", "repository": str(repository.resolve()), "array_path": array_path},
         )
     except (ValueError, KeyError, OSError, MemoryError, ic.IcechunkError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -433,17 +448,70 @@ def ingest_meshgraphnets_cmd(
 def inspect_cmd(
     dataset: Annotated[Path, typer.Argument(help="Dataset directory")],
     sample: Annotated[str | None, typer.Option(help="Print meta.json of this sample")] = None,
+    offset: Annotated[int, typer.Option(min=0, help="First sample in the manifest to show")] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1000, help="Maximum samples to show")] = 20,
+    measure_storage: Annotated[
+        bool, typer.Option("--measure-storage", help="Walk all stored files to measure their size")
+    ] = False,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Structured metadata and sample page")
+    ] = False,
 ) -> None:
-    """Print the manifest summary, splits and a table of samples"""
+    """Inspect catalog metadata without scanning simulation payloads."""
     from frontier_data.dataset import Dataset
 
-    ds = Dataset(dataset)
+    if sample is not None and offset:
+        raise typer.BadParameter("Choose a sample or a page offset, not both")
+    try:
+        ds = Dataset(dataset)
+        entries = (
+            [ds.entry(sample)]
+            if sample is not None
+            else ds.manifest.samples[offset : offset + limit]
+        )
+        detail = ds.meta(sample).model_dump() if sample is not None else None
+        size = ds.size_bytes() if measure_storage else None
+    except (ValueError, KeyError, OSError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
     m = ds.manifest
-    size = ds.size_bytes()
+    end = min(offset + len(entries), len(m.samples))
+    next_offset = end if sample is None and end < len(m.samples) else None
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {
+                    "name": m.name,
+                    "format": m.format,
+                    "version": m.version,
+                    "minor": m.minor,
+                    "sample_kind": m.sample_kind,
+                    "temporal": m.temporal,
+                    "domain": m.domain,
+                    "total_samples": len(m.samples),
+                    "storage_bytes": size,
+                    "storage_measured": measure_storage,
+                    "quality_report": m.quality,
+                    "fields": [field.model_dump() for field in m.fields],
+                    "time": m.time.model_dump() if m.time is not None else None,
+                    "splits": {name: len(ids) for name, ids in m.splits.items()},
+                    "page": {
+                        "offset": offset if sample is None else None,
+                        "limit": limit,
+                        "next_offset": next_offset,
+                    },
+                    "samples": [entry.model_dump() for entry in entries],
+                    "sample_metadata": detail,
+                },
+                indent=2,
+            )
+        )
+        return
     console.print(f"[bold]{m.name}[/] ({m.format} v{m.version}) at {ds.root}")
+    console.print(f"samples: {len(m.samples)}  fields: {[f.name for f in m.fields]}")
     console.print(
-        f"samples: {len(m.samples)}  size: {size / 1e6:.1f} MB  "
-        f"fields: {[f.name for f in m.fields]}"
+        f"storage: {size / 1e6:.1f} MB (measured)"
+        if size is not None
+        else "storage: not scanned; use --measure-storage for a full file inventory"
     )
     console.print(f"geometry params: {m.geometry_params}")
     if m.splits:
@@ -454,9 +522,17 @@ def inspect_cmd(
         if m.split_families:
             console.print(f"split families: {list(m.split_families)}")
     if m.quality:
-        rep = json.loads((ds.root / m.quality).read_text())
-        console.print(f"quality: {rep['summary']}")
-    table = Table(title="samples")
+        console.print("quality report:", m.quality, markup=False)
+    title = (
+        f"sample {sample}"
+        if sample is not None
+        else (
+            f"samples {offset + 1}–{end} of {len(m.samples)}"
+            if entries
+            else "no samples in this page"
+        )
+    )
+    table = Table(title=title)
     if m.minor >= 1 and (m.temporal == "transient" or m.sample_kind != "surface"):
         console.print(
             f"kind: {m.sample_kind}  temporal: {m.temporal}  domain: {m.domain}  "
@@ -469,7 +545,7 @@ def inspect_cmd(
             )
         for col in ("id", "kind", "steps", "points", "cells", "shape", "parameters"):
             table.add_column(col, justify="left" if col in ("id", "parameters") else "right")
-        for s in m.samples:
+        for s in entries:
             table.add_row(
                 s.id,
                 s.sample_kind,
@@ -482,7 +558,7 @@ def inspect_cmd(
     else:
         for col in ("id", "points", "faces", "lods", "cd", "cl", "slant"):
             table.add_column(col, justify="right" if col != "id" else "left")
-        for s in m.samples:
+        for s in entries:
             table.add_row(
                 s.id,
                 str(s.n_points),
@@ -493,8 +569,10 @@ def inspect_cmd(
                 f"{s.geometry_params.get('slant-angle-degrees', float('nan')):.1f}",
             )
     console.print(table)
-    if sample:
-        console.print_json(json.dumps(ds.meta(sample).model_dump(), default=str))
+    if next_offset is not None:
+        console.print(f"Next page: --offset {next_offset} --limit {limit}")
+    if detail is not None:
+        console.print_json(json.dumps(detail, default=str))
 
 
 @app.command("validate")

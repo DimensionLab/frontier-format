@@ -52,7 +52,7 @@ Run `python -m frontier_data <command> --help` for the flags.
 | `ingest ahmedml`               | Download AhmedML runs and convert them to a surface dataset                                                       |
 | `ingest the-well <name>`       | Download part of a The Well dataset and convert it to transient grids                                             |
 | `ingest meshgraphnets <name>`  | Download part of a MeshGraphNets dataset and convert it to transient meshes                                       |
-| `inspect <dataset>`            | Print the manifest summary, splits and a table of samples                                                         |
+| `inspect <dataset>`            | Read catalog metadata and a bounded sample page; storage walks are opt-in                                                         |
 | `validate <dataset>`           | Check a dataset against the format; exits non-zero on errors                                                      |
 | `quality <dataset>`            | Run quality checks and write `quality/report.json` and `report.html`                                              |
 | `synth <out>`                  | Write a small synthetic transient dataset                                                                         |
@@ -72,6 +72,23 @@ Run `python -m frontier_data <command> --help` for the flags.
 | `frontier_data.pipeline`    | `Pipeline`, `PipelineRunner`, `register` for JSON-serialisable ingest pipelines                                                                   |
 | `frontier_data.predictions` | `write_transient_prediction`, `read_transient_prediction`, `pack_prediction_store`                                                                |
 
+## Inspect before reading payloads
+
+```sh
+python -m frontier_data inspect ./dataset --limit 20
+python -m frontier_data inspect ./dataset --offset 20 --limit 20 --json
+python -m frontier_data inspect ./dataset --sample case-1 --json
+python -m frontier_data inspect ./dataset --measure-storage
+```
+
+Ordinary inspection reads the manifest and, only when requested, one sample metadata
+file. It does not walk payload directories or open a quality report. `--measure-storage`
+explicitly inventories all files and can be slow on large or remotely mounted stores.
+The default page contains 20 samples (maximum 1,000); JSON output includes `next_offset`
+and distinguishes an unmeasured storage size from zero bytes. Field units and association
+come from the catalog. The JSON manifest itself is still loaded in full: pagination here
+bounds output, not catalog memory or remote catalog indexing.
+
 ## Bounded field queries
 
 Inspect a region before reading it, then optionally export it:
@@ -82,7 +99,15 @@ python -m frontier_data query-field ./dataset case-1 pressure --select time=10:1
   --budget-mib 128 --max-output-mib 8192 --out pressure-window.npy > pressure-window.json
 ```
 
-The JSON report records selected dimensions, units, node/cell association and read costs.
+The JSON report records source shape, dtype, chunk shape, normalized index selections,
+selected dimensions, units, node/cell association, source/LOD identity and read costs.
+Selectors use array indices, not physical coordinates or seconds. Negative indices and
+omitted slice bounds are normalized in the report. `--location point|cell|grid|global`
+selects a declared scientific association explicitly; `--lod` chooses an available stored LOD (0 is
+finest). A missing field/location/LOD is an error, not silently substituted data. A name declared
+at multiple locations requires an explicit choice. Fields without catalog metadata must
+be described before querying; `-` is the explicit unknown-unit value. Global signals use
+their declared units and the `signals/` array, independent of mesh fields.
 NPY retains numerical bytes, dtype and shape; keep the JSON report for physical metadata.
 Exports stream through the chosen buffer budget and publish atomically without replacing
 existing files. `--max-output-mib` limits output size independently (default 1024 MiB).
@@ -90,10 +115,28 @@ Local/mounted filesystems must support hard links. Backend caches, decoder scrat
 file caches are additional memory. `--engine` accepts `zarr-python`, `tensorstore` or `zarrista`;
 install the corresponding optional reader before choosing it.
 
-Python users can call `frontier_data.query.FieldReader.plan`, `.read` or `.stream` with
+Python users can call `frontier_data.query.FieldReader.describe`, `.plan`, `.read` or `.stream` with
 named dimensions. Every streamed `FieldResult` retains units and association, while its
 `Tile` provides the source selection and destination region. The stream accepts a
 cancellation callback; callers retaining yielded arrays must budget that memory themselves.
+`describe()` returns metadata and costs without reading values. For read/compute overlap,
+use the context-managed `prefetch()`; it splits the explicit read budget into two slots
+and preserves the same units, axes and snapshot identity:
+
+```python
+from frontier_data import Dataset
+from frontier_data.query import FieldReader
+
+pressure = FieldReader(Dataset("dataset").sample("case-1"), "pressure", buffer_bytes=64 << 20)
+with pressure.prefetch({"time": slice(10, 100)}) as blocks:
+    for tile, result in blocks:
+        process(tile.destination, result.values, result.units)
+        del result
+```
+
+One background worker owns reads. Cancellation callbacks must be thread-safe, and context
+exit waits for in-flight native I/O to finish. Additional arrays retained by consumers,
+backend caches and decoder scratch are outside the explicit read budget.
 
 Connectors can expose remotely stored arrays through the same scientific query API:
 
@@ -165,3 +208,10 @@ exactly the same revision later. Exports never replace existing files. The Pytho
 `SnapshotFieldReader` also attaches the revision ID to each returned field/tile. Repository
 retention remains the owner's responsibility. This command does not yet register a remote
 snapshot as a canvas dataset or replace the training catalog.
+
+Inspection latency can be measured on an existing unchanged dataset with
+`python -m frontier_data.benchmark_inspection --dataset ./dataset --output ./inspection-results`.
+The output directory must be outside the dataset. The benchmark compares fresh CLI processes
+with/without explicit storage measurement, verifies identical catalog output, retains manifest
+and source hashes, and includes process startup in its timings. Record concurrent work and
+storage/cache conditions when reporting results. It does not measure simulation read throughput.
