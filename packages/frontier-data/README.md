@@ -218,3 +218,35 @@ The output directory must be outside the dataset. The benchmark compares fresh C
 with/without explicit storage measurement, verifies identical catalog output, retains manifest
 and source hashes, and includes process startup in its timings. Record concurrent work and
 storage/cache conditions when reporting results. It does not measure simulation read throughput.
+
+### Indexed metadata catalogs
+
+For large manifests, create a portable metadata snapshot once and browse it without
+reopening all sample records or accessing the numerical data:
+
+```sh
+python -m frontier_data catalog-build ./dataset ./dataset-catalog.sqlite
+python -m frontier_data catalog-inspect ./dataset-catalog.sqlite --limit 20
+python -m frontier_data catalog-inspect ./dataset-catalog.sqlite --start 20 --limit 20
+python -m frontier_data catalog-inspect ./dataset-catalog.sqlite --sample case-1
+python -m frontier_data catalog-inspect ./dataset-catalog.sqlite --verify
+```
+
+The JSON output includes dataset identity, license/provenance metadata, sample metadata,
+field names, SI units as declared by the source, field locations, split membership and
+revision identity. Same-named point and cell fields remain distinct. Sample paths remain
+relative; creating a catalog does not copy or relocate simulation arrays. It also does not
+infer missing units or convert unit systems. Browsing works with the numerical storage
+disconnected, so the catalog can be shared separately from the much larger dataset.
+
+Build from a dataset that is not being modified. Conversion reads the existing manifest
+and split membership once into memory, then streams sample metadata; per-file hashes
+identify what was captured. It does not provide a transaction across a mutable source
+dataset. The destination must be new. `--verify` is an explicit full integrity scan;
+ordinary browsing checks only returned records. Authenticate catalog receipts separately
+when transferring files between trust boundaries.
+
+This additional catalog format uses ArrayRoute's standard SQLite snapshot. The existing
+Frontier v1 dataset remains authoritative; training, native canvas and server listings do
+not automatically switch to indexed access. Distributed catalog publication, remote range
+reads and those integrations require separate work and are not implied by these commands.

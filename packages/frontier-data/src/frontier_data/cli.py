@@ -31,6 +31,44 @@ app.add_typer(versions_app, name="versions")
 console = joblog.console("frontier_data")
 
 
+@app.command("catalog-build")
+def catalog_build(dataset: Path, out: Path) -> None:
+    """Create an indexed metadata snapshot of a dataset that is not being modified."""
+    import sqlite3
+    from dataclasses import asdict
+
+    from frontier_data.catalog import index_dataset
+
+    try:
+        receipt = index_dataset(dataset, out)
+        typer.echo(json.dumps(asdict(receipt), default=str))
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command("catalog-inspect")
+def catalog_inspect(
+    catalog: Path,
+    sample: str | None = None,
+    start: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=4096)] = 20,
+    verify: bool = False,
+) -> None:
+    """Browse indexed sample metadata; --verify explicitly checks every record."""
+    import sqlite3
+
+    from frontier_data.catalog import inspect_catalog
+
+    try:
+        typer.echo(
+            json.dumps(
+                inspect_catalog(catalog, sample=sample, start=start, limit=limit, verify=verify)
+            )
+        )
+    except (ValueError, KeyError, OSError, sqlite3.Error) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 @app.command("query-field")
 def query_field(
     dataset: Path,
