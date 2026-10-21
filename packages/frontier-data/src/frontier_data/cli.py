@@ -31,6 +31,165 @@ app.add_typer(versions_app, name="versions")
 console = joblog.console("frontier_data")
 
 
+@app.command("query-field")
+def query_field(
+    dataset: Path,
+    sample: str,
+    field: str,
+    select: Annotated[
+        list[str] | None, typer.Option(help="Named index/slice, e.g. time=10 x=20:80")
+    ] = None,
+    engine: str = "zarr-python",
+    budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    max_output_mib: Annotated[
+        int, typer.Option(min=1, help="Maximum exported array size; read buffers remain bounded")
+    ] = 1024,
+    out: Annotated[
+        Path | None, typer.Option(help="Write .npy; omit to inspect read costs only")
+    ] = None,
+) -> None:
+    """Inspect or read a field region without loading a whole simulation."""
+    from frontier_data.dataset import Dataset
+    from frontier_data.query import FieldReader, parse_selectors
+
+    try:
+        reader = FieldReader(
+            Dataset(dataset).sample(sample), field, engine=engine, buffer_bytes=budget_mib << 20
+        )
+        _query_field_output(
+            reader, parse_selectors(select or []), sample, field, engine, out, max_output_mib
+        )
+    except (ValueError, KeyError, OSError, ImportError, MemoryError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _query_field_output(reader, selectors, sample, field, engine, out, max_output_mib):
+    from dataclasses import asdict
+
+    from arrayroute import ReadStats
+    from arrayroute.export import save_npy
+
+    cost = reader.plan(selectors)
+    result = {
+        "sample": sample,
+        "snapshot_id": reader.snapshot_id,
+        "field": field,
+        "dimensions": reader.dimensions,
+        "selected_dimensions": [
+            d
+            for d, s in zip(reader.dimensions, cost.selection, strict=True)
+            if isinstance(s, slice)
+        ],
+        "units": reader.units,
+        "association": reader.association,
+        "output_shape": cost.output_shape,
+        "output_bytes": cost.output_bytes,
+        "chunks_touched": cost.chunks_touched,
+        "decoded_bytes_upper_bound": cost.decoded_bytes_upper_bound,
+        "decode_amplification": cost.decode_amplification,
+        "engine": engine,
+    }
+    if out is not None:
+        stats = ReadStats()
+        save_npy(
+            reader.reader,
+            reader.selection(selectors),
+            out,
+            max_output_bytes=max_output_mib << 20,
+            stats=stats,
+        )
+        result["read"] = asdict(stats)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@app.command("query-snapshot")
+def query_snapshot(
+    repository: Path,
+    array_path: str,
+    snapshot_id: str | None = None,
+    branch: str | None = None,
+    select: Annotated[list[str] | None, typer.Option(help="Named index/slice")] = None,
+    budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    max_output_mib: Annotated[int, typer.Option(min=1)] = 1024,
+    out: Annotated[
+        Path | None, typer.Option(help="Write .npy; omit for metadata and read costs")
+    ] = None,
+) -> None:
+    """Pin an Icechunk field revision and inspect or export a scientific region."""
+    if (snapshot_id is None) == (branch is None):
+        raise typer.BadParameter("Choose exactly one of --snapshot-id or --branch")
+    try:
+        import icechunk as ic
+    except ImportError as exc:
+        raise typer.BadParameter("Use Python 3.12+ and install frontier-data[snapshots] to read revisions") from exc
+    from arrayroute.snapshot import FilesystemRepository, Snapshot, SnapshotReadSession
+    from frontier_data.query import SnapshotFieldReader, parse_selectors
+
+    try:
+        location = FilesystemRepository(str(repository))
+        pinned = (
+            Snapshot(location, snapshot_id)
+            if snapshot_id is not None
+            else Snapshot.resolve(location, branch=branch or "main")
+        )
+        reader = SnapshotFieldReader(
+            SnapshotReadSession(pinned, buffer_bytes=budget_mib << 20), array_path
+        )
+        _query_field_output(
+            reader, parse_selectors(select or []), None, array_path, "icechunk", out, max_output_mib
+        )
+    except (ValueError, KeyError, OSError, MemoryError, ic.IcechunkError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command("compare-field")
+def compare_field(
+    reference: Path,
+    candidate: Path,
+    sample: str,
+    field: str,
+    tolerance: Annotated[float, typer.Option(help="Absolute tolerance in the stored field units")],
+    select: Annotated[list[str] | None, typer.Option(help="Named index/slice")] = None,
+    candidate_sample: str | None = None,
+    engine: str = "zarr-python",
+    budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+) -> None:
+    """Measure error between explicitly paired fields with the same geometry/index space."""
+    from dataclasses import asdict
+
+    from frontier_data.dataset import Dataset
+    from frontier_data.query import FieldReader, compare_fields, parse_selectors
+
+    try:
+        expected = FieldReader(
+            Dataset(reference).sample(sample), field, engine=engine, buffer_bytes=budget_mib << 20
+        )
+        actual = FieldReader(
+            Dataset(candidate).sample(candidate_sample or sample),
+            field,
+            engine=engine,
+            buffer_bytes=budget_mib << 20,
+        )
+        result = compare_fields(
+            expected, actual, parse_selectors(select or []), absolute_tolerance=tolerance
+        )
+        typer.echo(
+            json.dumps(
+                {
+                    "field": field,
+                    "units": expected.units,
+                    "association": expected.association,
+                    "assessment": {**asdict(result), "passed": result.passed},
+                },
+                indent=2,
+            )
+        )
+        if not result.passed:
+            raise typer.Exit(1)
+    except (ValueError, KeyError, OSError, ImportError, MemoryError, ArithmeticError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 def _setup_logging(verbose: bool) -> None:
     joblog.setup(verbose)
     logging.getLogger("huggingface_hub").setLevel(logging.WARNING)

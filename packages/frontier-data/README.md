@@ -72,6 +72,66 @@ Run `python -m frontier_data <command> --help` for the flags.
 | `frontier_data.pipeline`    | `Pipeline`, `PipelineRunner`, `register` for JSON-serialisable ingest pipelines                                                                   |
 | `frontier_data.predictions` | `write_transient_prediction`, `read_transient_prediction`, `pack_prediction_store`                                                                |
 
+## Bounded field queries
+
+Inspect a region before reading it, then optionally export it:
+
+```sh
+python -m frontier_data query-field ./dataset case-1 pressure --select time=10 --select x=20:80
+python -m frontier_data query-field ./dataset case-1 pressure --select time=10:100 \
+  --budget-mib 128 --max-output-mib 8192 --out pressure-window.npy > pressure-window.json
+```
+
+The JSON report records selected dimensions, units, node/cell association and read costs.
+NPY retains numerical bytes, dtype and shape; keep the JSON report for physical metadata.
+Exports stream through the chosen buffer budget and publish atomically without replacing
+existing files. `--max-output-mib` limits output size independently (default 1024 MiB).
+Local/mounted filesystems must support hard links. Backend caches, decoder scratch and OS
+file caches are additional memory. `--engine` accepts `zarr-python`, `tensorstore` or `zarrista`;
+install the corresponding optional reader before choosing it.
+
+Python users can call `frontier_data.query.FieldReader.plan`, `.read` or `.stream` with
+named dimensions. Every streamed `FieldResult` retains units and association, while its
+`Tile` provides the source selection and destination region. The stream accepts a
+cancellation callback; callers retaining yielded arrays must budget that memory themselves.
+
+Connectors can expose remotely stored arrays through the same scientific query API:
+
+```python
+from arrayroute.remote import RemoteReadSession, S3Store
+from frontier_data.query import ArrayFieldReader
+
+storage = RemoteReadSession(S3Store("engineering-data", prefix="snapshots/revision-42"))
+pressure = ArrayFieldReader(
+    storage.open("case-17/pressure"),
+    dimensions=("time", "z", "y", "x"), units="Pa", association="cell",
+)
+section = pressure.read({"time": 10, "x": 40})
+```
+
+The dimensions, units and association must come from the connector's scientific catalog;
+they are not inferred from numerical values. `ArrayFieldReader` works with any ArrayRoute
+backend and preserves these declarations through reads, streaming and field comparisons.
+Remote endpoints must be authorized by the caller and use immutable objects. This is a
+Python integration point; it does not register a remote dataset in the native app or add
+remote URL support to the local-dataset CLI commands.
+
+Compare a reconstructed dataset with its explicitly paired reference:
+
+```sh
+python -m frontier_data compare-field ./original ./reconstructed case-1 pressure \
+  --tolerance 0.1 --budget-mib 128
+```
+
+The absolute tolerance is in the stored field units (for example 0.1 Pa). The command
+streams both layouts and reports maximum absolute error, RMSE, relative L2, nonfinite
+mismatches and pass/fail; a failed tolerance exits with status 1. Units, axes, association,
+shape and dtype must agree. Empty or all-nonfinite regions cannot pass as scientific
+evidence. This is an elementwise comparison of fields in the same geometry/index space;
+it does not establish mesh correspondence or remap different meshes. Two reader budgets
+and comparison scratch are additional memory. Use `--select` for a region and
+`--candidate-sample` when paired sample identifiers differ.
+
 ## Notices
 
 - Licence: Apache-2.0. Converted datasets keep the licence of their source: AhmedML is
@@ -87,3 +147,21 @@ Run `python -m frontier_data <command> --help` for the flags.
 ## Documentation
 
 - [Dataset format specification](../../docs/spec/dataset-format.md)
+
+### Read a committed scientific field
+
+With Python 3.12+ and the `snapshots` extra, an Icechunk field can be selected by an immutable
+revision. Declare the field's `dims`, `units` and `association` in its array attributes.
+
+```sh
+frontier-data query-snapshot simulation.icechunk velocity --branch main --select time=10
+frontier-data query-snapshot simulation.icechunk velocity --snapshot-id SAVED_ID --select time=10 --out velocity.npy
+```
+
+The result records the resolved snapshot ID, physical units, selected dimensions and read
+costs. Save that JSON alongside any exported NPY; NPY itself does not store scientific
+units or provenance. `--branch` resolves once per invocation; use the returned ID to repeat
+exactly the same revision later. Exports never replace existing files. The Python
+`SnapshotFieldReader` also attaches the revision ID to each returned field/tile. Repository
+retention remains the owner's responsibility. This command does not yet register a remote
+snapshot as a canvas dataset or replace the training catalog.
