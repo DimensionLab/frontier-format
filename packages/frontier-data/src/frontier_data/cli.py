@@ -83,6 +83,9 @@ def query_field(
     ] = None,
     lod: Annotated[int, typer.Option(min=0, help="Stored level of detail; 0 is finest")] = 0,
     budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    range_policy: Annotated[
+        Path | None, typer.Option(help="Zarr range policy JSON; per-batch fetch limits")
+    ] = None,
     plan_workers: Annotated[
         int | None, typer.Option(min=1, help="Plan up to this many concurrent readers")
     ] = None,
@@ -97,10 +100,27 @@ def query_field(
     ] = None,
 ) -> None:
     """Inspect or read a field region without loading a whole simulation."""
+    from dataclasses import asdict
+
+    from arrayroute.ranges import RangePolicy
+    from arrayroute.session import LocalReadSession
     from frontier_data.dataset import Dataset
     from frontier_data.query import FieldReader, parse_selectors
 
     try:
+        policy = None
+        if range_policy is not None:
+            with range_policy.open('rb') as handle:
+                raw = handle.read(65537)
+            if len(raw) > 65536:
+                raise ValueError('Range policy JSON must be at most 64 KiB')
+            document = json.loads(raw)
+            if not isinstance(document, dict):
+                raise ValueError('Range policy must be a JSON object')
+            try:
+                policy = RangePolicy(**document)
+            except TypeError as exc:
+                raise ValueError(f'Invalid range policy: {exc}') from exc
         selected_sample = Dataset(dataset).sample(sample)
         reader = FieldReader(
             selected_sample,
@@ -109,6 +129,7 @@ def query_field(
             lod=lod,
             engine=engine,
             buffer_bytes=budget_mib << 20,
+            session=LocalReadSession(engine, buffer_bytes=budget_mib << 20, range_policy=policy),
         )
         _query_field_output(
             reader,
@@ -123,6 +144,7 @@ def query_field(
                 "path": str(dataset.resolve()),
                 "location": reader.location,
                 "lod": reader.lod,
+                "range_policy": asdict(policy) if policy is not None else None,
             },
             plan_workers=plan_workers,
             total_read_budget_mib=total_read_budget_mib,

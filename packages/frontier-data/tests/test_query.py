@@ -6,6 +6,43 @@ from frontier_data.dataset import Dataset, DatasetWriter
 from frontier_data.query import FieldReader, parse_selectors
 
 
+def test_customer_range_policy_exports_exact_sharded_field_and_records_limits(tmp_path):
+    import json
+
+    from typer.testing import CliRunner
+
+    from arrayroute.layout import GridLayoutPolicy
+    from frontier_data.cli import app
+
+    pytest.importorskip('zarr', minversion='3.3')
+    values = np.random.default_rng(2718).normal(size=(2, 32, 32, 32, 3)).astype('f4')
+    writer = DatasetWriter(tmp_path / 'data', 'bounded region reads')
+    writer.write_grid_sample(
+        'case', fields={'velocity': values}, times=[0, .1], spacing=[.1] * 3,
+        field_units={'velocity': 'm/s'},
+        storage_layout=GridLayoutPolicy(chunk_edge=8, shard_edge=32),
+    )
+    writer.finalize()
+    policy = tmp_path / 'policy.json'
+    policy.write_text(json.dumps({'max_request_bytes': 8192, 'max_inflight_bytes': 16384}))
+    out = tmp_path / 'region.npy'
+    args = ['query-field', str(tmp_path / 'data'), 'case', 'velocity',
+            '--select', 'time=1', '--select', 'x=1:14:2', '--select', 'y=2:29:3',
+            '--select', 'z=0:8', '--range-policy', str(policy), '--out', str(out)]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report['units'] == 'm/s' and report['association'] == 'node'
+    assert report['source']['range_policy']['max_inflight_bytes'] == 16384
+    assert np.load(out).tobytes() == values[1, 1:14:2, 2:29:3, :8].tobytes()
+    refused = CliRunner().invoke(app, [*args, '--engine', 'tensorstore'])
+    assert refused.exit_code != 0 and 'Zarr-Python' in refused.output
+    for invalid in ['[]', '{"max_request_bytes": true}', ' ' * 65537]:
+        policy.write_text(invalid)
+        refused = CliRunner().invoke(app, args)
+        assert refused.exit_code != 0 and 'Error' in refused.output
+
+
 @pytest.mark.parametrize("engine", ["zarr-python", "tensorstore", "zarrista"])
 def test_cli_measures_customer_regions_with_units_and_verified_reads(tmp_path, engine):
     import json
