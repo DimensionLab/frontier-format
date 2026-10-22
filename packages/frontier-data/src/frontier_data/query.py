@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Generator, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -128,18 +128,19 @@ class ArrayFieldReader:
         *,
         stats: ReadStats | None = None,
         cancelled: Callable[[], bool] | None = None,
-    ) -> Iterator[tuple[Tile, FieldResult]]:
+    ) -> Generator[tuple[Tile, FieldResult], None, None]:
         """Yield disjoint tiles in the selected region, retaining scientific metadata."""
         selection = self.selection(selectors)
         dimensions = tuple(
             d for d, s in zip(self.dimensions, selection, strict=True) if isinstance(s, slice)
         )
-        for tile, values in self.reader.stream(selection, stats=stats, cancelled=cancelled):
-            yield (
-                tile,
-                FieldResult(values, dimensions, self.units, self.association, self.snapshot_id),
-            )
-            del values
+        with closing(self.reader.stream(selection, stats=stats, cancelled=cancelled)) as source:
+            for tile, values in source:
+                yield (
+                    tile,
+                    FieldResult(values, dimensions, self.units, self.association, self.snapshot_id),
+                )
+                del values
 
     @contextmanager
     def prefetch(

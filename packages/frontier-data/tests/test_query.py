@@ -6,6 +6,47 @@ from frontier_data.dataset import Dataset, DatasetWriter
 from frontier_data.query import FieldReader, parse_selectors
 
 
+@pytest.mark.parametrize('engine', ['zarr-python', 'tensorstore', 'zarrista'])
+def test_engineer_parallel_field_readers_share_budget_and_keep_units(tmp_path, engine):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from arrayroute.budget import ReadBudget
+    from arrayroute.layout import GridLayoutPolicy
+    from arrayroute.session import LocalReadSession
+
+    velocity = np.random.default_rng(2107).normal(size=(2, 24, 24, 24, 3)).astype('f4')
+    pressure = velocity[..., :1] * 100
+    writer = DatasetWriter(tmp_path, 'shared analysis memory')
+    writer.write_grid_sample('case', fields={'velocity': velocity, 'pressure': pressure},
+        times=[0, .1], spacing=[.1] * 3, field_units={'velocity': 'm/s', 'pressure': 'Pa'},
+        storage_layout=GridLayoutPolicy(chunk_edge=8, shard_edge=24))
+    writer.finalize()
+    pool = ReadBudget(512 << 10)
+
+    def inspect(i):
+        field = 'velocity' if i % 2 else 'pressure'
+        session = LocalReadSession(engine, read_budget=pool, buffer_bytes=512 << 10)
+        reader = FieldReader(Dataset(tmp_path).sample('case'), field, session=session)
+        result = reader.read({'time': i % 2, 'x': slice(None, None, 2)})
+        expected = (velocity if field == 'velocity' else pressure)[i % 2, ::2]
+        assert result.values.tobytes() == expected.tobytes()
+        assert result.units == ('m/s' if field == 'velocity' else 'Pa')
+        assert result.association == 'node'
+
+    with ThreadPoolExecutor(8) as executor:
+        list(executor.map(inspect, range(8)))
+    assert pool.snapshot()['used_bytes'] == 0
+    assert pool.snapshot()['peak_bytes'] <= 512 << 10
+    reader = FieldReader(Dataset(tmp_path).sample('case'), 'velocity',
+                         session=LocalReadSession(engine, read_budget=pool,
+                                                  buffer_bytes=256 << 10))
+    source = reader.stream({'time': 0})
+    next(source)
+    assert pool.snapshot()['used_bytes'] > 0
+    source.close()
+    assert pool.snapshot()['used_bytes'] == 0
+
+
 def test_customer_range_policy_exports_exact_sharded_field_and_records_limits(tmp_path):
     import json
 
