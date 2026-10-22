@@ -203,6 +203,7 @@ def _write_array(
     *,
     dims: list[str] | None = None,
     chunks: tuple[int, ...] | None = None,
+    shards: tuple[int, ...] | None = None,
 ) -> Any:
     data = np.ascontiguousarray(data)
     if chunks is None:
@@ -213,6 +214,7 @@ def _write_array(
         shape=data.shape,
         dtype=data.dtype,
         chunks=chunks,
+        shards=shards,
         compressors=_compressors(),
         chunk_key_encoding={"name": "default", "configuration": {"separator": "."}},
     )

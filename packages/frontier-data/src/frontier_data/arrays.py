@@ -34,6 +34,7 @@ from typing import Any
 
 import numpy as np
 
+from arrayroute.layout import GridLayoutPolicy
 from frontier_data.dataset import (
     CHUNK_ROWS,
     FORMAT_MINOR,
@@ -643,6 +644,7 @@ def write_grid_sample(
     field_units: Mapping[str, str] | None = None,
     dims: Mapping[str, Sequence[str]] | None = None,
     steps_per_chunk: int = 1,
+    storage_layout: GridLayoutPolicy | None = None,
     attrs: Mapping[str, Any] | None = None,
 ) -> SampleEntry:
     """Write a regular-grid sample to ``samples/<id>/grid.zarr``.
@@ -655,6 +657,10 @@ def write_grid_sample(
     ``{"x": "periodic", "y": ["wall", "open"]}``. ``location="cell"`` declares cell-centred
     values: ``coords`` are then the cell centres and the grid shape counts cells (root
     attribute ``location``). ``signals`` are global time series ``(T[, C])``.
+    Grid fields use bounded spatial chunks grouped into larger Zarr shards. Pass a
+    ``GridLayoutPolicy`` to tune the spatial edges and decoded-byte limits. The temporal
+    ``steps_per_chunk`` is an upper bound; byte limits take precedence. Existing stores
+    are not rewritten. Field values still follow the dataset's float32 writer contract.
     """
     t0 = _time.perf_counter()
     root = Path(root)
@@ -688,11 +694,15 @@ def write_grid_sample(
         if lead and tt is not None and a.shape[0] != tt.size:
             raise ValueError(f"grid field {name!r} has {a.shape[0]} steps, times has {tt.size}")
         d = (["time"] if lead else []) + axes + ["component"]
-        if lead:
-            _put(fgroup, name, a, d, steps_per_chunk)
-        else:
-            sub, leaf = _leaf(fgroup, name)
-            _write_array(sub, leaf, a, dims=d, chunks=a.shape)
+        layout = (storage_layout or GridLayoutPolicy()).plan(
+            a.shape,
+            itemsize=a.dtype.itemsize,
+            spatial_axes=tuple(range(lead, lead + ndim)),
+            time_axis=0 if lead else None,
+            steps_per_chunk=steps_per_chunk,
+        )
+        sub, leaf = _leaf(fgroup, name)
+        _write_array(sub, leaf, a, dims=d, chunks=layout.chunks, shards=layout.shards)
         infos.append(
             FieldInfo(
                 name=name,
