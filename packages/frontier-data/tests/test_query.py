@@ -712,11 +712,13 @@ def test_global_signal_selection_preserves_units(tmp_path):
     np.testing.assert_array_equal(result.values.ravel(), values[1:4:2])
 
 
-@pytest.mark.parametrize('budget,step,expected', [
-    (1, 2, 'native'), (16, 2, 'dense-gather'), (16, 23, 'native'),
+@pytest.mark.parametrize('budget,step,expected,strategy', [
+    (1, 2, 'native', 'dense'), (16, 2, 'dense-gather', 'dense'),
+    (16, 23, 'native', 'dense'), (1, 2, 'parallel-gather', 'parallel'),
+    (1, 23, 'parallel-gather', 'parallel'),
 ])
 def test_customer_dense_policy_reports_cost_and_exports_exact_si_field(
-    tmp_path, budget, step, expected,
+    tmp_path, budget, step, expected, strategy,
 ):
     import json
 
@@ -733,7 +735,7 @@ def test_customer_dense_policy_reports_cost_and_exports_exact_si_field(
     writer.finalize()
     output = tmp_path / 'preview.npy'
     args = ['query-field', str(tmp_path / 'data'), 'case', 'velocity',
-            '--engine', 'zarrista', '--read-strategy', 'dense', '--select', 'time=0',
+            '--engine', 'zarrista', '--read-strategy', strategy, '--select', 'time=0',
             '--budget-mib', str(budget), '--out', str(output)]
     for axis in ['x', 'y', 'z']:
         args.extend(['--select', f'{axis}=::{step}'])
@@ -741,8 +743,38 @@ def test_customer_dense_policy_reports_cost_and_exports_exact_si_field(
     assert result.exit_code == 0, result.output
     report = json.loads(result.output)
     assert report['read_strategy'] == expected
-    assert report['source']['read_strategy'] == 'dense'
+    assert report['source']['read_strategy'] == strategy
     assert report['units'] == 'm/s'
     assert report['peak_read_buffer_bytes_upper_bound'] <= budget << 20
-    assert (report['intermediate_bytes_upper_bound'] > 0) == (expected == 'dense-gather')
+    assert (report['intermediate_bytes_upper_bound'] > 0) == (expected != 'native')
     assert np.load(output).tobytes() == values[0, ::step, ::step, ::step].tobytes()
+    assert report['gather_workers'] == (4 if strategy == 'parallel' else 1)
+
+
+def test_customer_parallel_benchmark_reports_actual_inner_workers(tmp_path):
+    import json
+
+    from typer.testing import CliRunner
+
+    from arrayroute.layout import GridLayoutPolicy
+    from frontier_data.cli import app
+
+    values = np.random.default_rng(62).normal(size=(3, 64, 64, 64, 3)).astype('f4')
+    writer = DatasetWriter(tmp_path/'data', 'parallel preview pilot')
+    writer.write_grid_sample('case', fields={'velocity': values}, times=[0, .1, .2],
+        spacing=[.1]*3, field_units={'velocity': 'm/s'},
+        storage_layout=GridLayoutPolicy(chunk_edge=8, shard_edge=32))
+    writer.finalize()
+    result = CliRunner().invoke(app, ['benchmark-field', str(tmp_path/'data'), 'case',
+        'velocity', '--engine', 'zarrista', '--read-strategy', 'parallel', '--gather-workers', '8',
+        '--vary', 'time', '--count', '3', '--select', 'x=::4', '--select', 'y=::2',
+        '--workers', '1', '--workers', '2',
+        '--total-read-budget-mib', '1', '--repeats', '1'])
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report['units'] == 'm/s' and report['state'] == 'completed'
+    assert report['gather_workers'] == 8
+    assert all(t['verified'] and t['read_strategies'] == {'parallel-gather': 3}
+               for t in report['trials'])
+    actual = {t['workers']: t['gather_workers_peak'] for t in report['trials']}
+    assert actual[1] > actual[2] and actual[2] >= 2

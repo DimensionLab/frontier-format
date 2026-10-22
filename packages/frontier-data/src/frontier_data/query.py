@@ -102,6 +102,7 @@ class ArrayFieldReader:
             "peak_decoded_bytes_upper_bound": cost.peak_decoded_bytes_upper_bound,
             "intermediate_bytes_upper_bound": cost.intermediate_bytes_upper_bound,
             "read_strategy": cost.strategy,
+            "gather_workers": cost.gather_workers,
             "peak_read_buffer_bytes_upper_bound": cost.buffer_bytes_upper_bound,
             "decode_amplification": cost.decode_amplification,
             "read_buffer_bytes": self.reader.buffer_bytes,
