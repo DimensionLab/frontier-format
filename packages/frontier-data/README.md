@@ -310,3 +310,47 @@ This additional catalog format uses ArrayRoute's standard SQLite snapshot. The e
 Frontier v1 dataset remains authoritative; training, native canvas and server listings do
 not automatically switch to indexed access. Distributed catalog publication, remote range
 reads and those integrations require separate work and are not implied by these commands.
+
+### Tune a field, save the settings, reuse them
+
+Use `tune-field` to compare supported installed readers on representative regions of
+your own dataset. Dimension names and SI units come from the field's metadata.
+
+```bash
+frontier-data tune-field ./dataset case-1 velocity --vary time --count 8 \
+  --select 'x=::8' --select 'y=::8' --select 'z=::8' \
+  --workers 1 --workers 2 --repeats 3 --total-read-budget-mib 64 \
+  --max-output-mib 1024 --time-budget-s 60 --out velocity-read-profile.json
+
+frontier-data query-field ./dataset case-1 velocity --profile velocity-read-profile.json \
+  --select time=17 --select 'x=::8' --select 'y=::8' --select 'z=::8' \
+  --out velocity-17.npy
+```
+
+The pilot compares Zarr-Python, four Zarrista strategies (native, dense, parallel,
+bulk), and TensorStore. `--engine` restricts the set and may be repeated. Missing
+optional readers and explicitly unsupported layouts are reported as skipped. All
+measured values must exactly match the portable reader's sequential reference.
+The pilot never changes source values or layout.
+
+A profile is bounded JSON containing plain settings, measurements and a metadata
+binding. It contains no executable factories. Reuse requires a completed pilot,
+the same field, local dataset path, metadata and region pattern, and matching
+recorded runtime versions, CPU count and thread environment. Another integer index
+on the varied dimension is allowed. A changed selection or metadata requires retuning.
+These checks do not identify the physical machine or storage device; retune after
+moving storage or changing hardware, even when these coarse signatures still match.
+
+`query-field` applies the measured per-worker reader settings to one requested region;
+it does not start the pilot's outer worker pool. The receipt records the measured
+worker count and applied allowance. A batch-optimal policy is not necessarily the
+fastest single-region export. Pilot timings include setup, materialization and hashing,
+not NPY writing, transforms or model training. Compare those complete workflows
+separately when they determine the outcome.
+
+Reports cannot overwrite existing files. A time-limited pilot may save diagnostic
+JSON but provides no reusable recommendation. The deadline is cooperative and joins
+in-flight native reads. The output cap counts selected bytes across all trials, not
+storage traffic. The buffer allowance excludes native caches and codec scratch and
+is not an RSS limit. Profiles are advisory local performance records, not authenticated
+data snapshots or an integrity guarantee for future values.

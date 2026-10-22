@@ -780,3 +780,133 @@ def test_customer_parallel_benchmark_reports_actual_inner_workers(tmp_path, stra
                for t in report['trials'])
     actual = {t['workers']: t['gather_workers_peak'] for t in report['trials']}
     assert actual[1] > actual[2] and actual[2] >= 2
+
+
+@pytest.fixture
+def tuning_dataset(tmp_path):
+    from arrayroute.layout import GridLayoutPolicy
+
+    values = np.random.default_rng(726).normal(size=(4, 24, 24, 24, 3)).astype('f4')
+    root = tmp_path/'data'
+    writer = DatasetWriter(root, 'transient velocity fields')
+    writer.write_grid_sample('case', fields={'velocity': values}, times=[0, .1, .2, .3],
+        spacing=[.1]*3, field_units={'velocity': 'm/s'},
+        storage_layout=GridLayoutPolicy(chunk_edge=4, shard_edge=8))
+    writer.finalize()
+    return root, values
+
+
+def _tune_report(root, output, *extra):
+    from typer.testing import CliRunner
+
+    from frontier_data.cli import app
+
+    return CliRunner().invoke(app, ['tune-field', str(root), 'case', 'velocity', '--vary', 'time',
+        '--count', '3', '--select', 'x=::2', '--select', 'y=::2', '--select', 'z=::2',
+        '--workers', '1', '--workers', '2', '--repeats', '2', '--total-read-budget-mib', '1',
+        '--out', str(output), *extra])
+
+
+def test_customer_tunes_then_reuses_profile_for_an_unmeasured_timestep(tuning_dataset, tmp_path):
+    import json
+
+    from typer.testing import CliRunner
+
+    from frontier_data.cli import app
+
+    root, values = tuning_dataset
+    profile = tmp_path/'profile.json'
+    tuned = _tune_report(root, profile)
+    assert tuned.exit_code == 0, tuned.output
+    report = json.loads(profile.read_text())
+    assert report['state'] == 'completed' and report['binding']['units'] == 'm/s'
+    assert report['selected_indices'] == [0, 1, 3] and len(report['trials']) == 24
+    assert all(t['verified'] for t in report['trials'])
+    target = tmp_path/'frame.npy'
+    queried = CliRunner().invoke(app, ['query-field', str(root), 'case', 'velocity',
+        '--profile', str(profile), '--select', 'time=2', '--select', 'x=::2',
+        '--select', 'y=::2', '--select', 'z=::2', '--out', str(target)])
+    assert queried.exit_code == 0, queried.output
+    receipt = json.loads(queried.output)
+    assert receipt['units'] == 'm/s'
+    assert receipt['source']['profile']['buffer_bytes_per_worker'] == (
+        report['recommendation']['buffer_bytes_per_worker'])
+    assert np.load(target).tobytes() == values[2, ::2, ::2, ::2].tobytes()
+    previous = profile.read_bytes()
+    refused = _tune_report(root, profile)
+    assert refused.exit_code != 0 and profile.read_bytes() == previous
+
+
+@pytest.mark.parametrize('change', ['region', 'metadata', 'runtime', 'threads',
+                                    'unfinished', 'executable'])
+def test_profile_rejects_stale_wrong_or_unsafe_settings(tuning_dataset, tmp_path, change):
+    import json
+
+    from typer.testing import CliRunner
+
+    from frontier_data.cli import app
+
+    root, _ = tuning_dataset
+    profile = tmp_path/'profile.json'
+    tuned = _tune_report(root, profile, '--engine', 'zarr-python')
+    assert tuned.exit_code == 0, tuned.output
+    report = json.loads(profile.read_text())
+    if change == 'metadata':
+        meta = Dataset(root).sample_dir('case')/'meta.json'
+        meta.write_bytes(meta.read_bytes()+b'\n')
+    elif change == 'runtime':
+        report['runtime']['logical_cpus'] = -1
+    elif change == 'threads':
+        report['runtime']['thread_environment']['RAYON_NUM_THREADS'] = 'changed'
+    elif change == 'unfinished':
+        report['state'] = 'time-budget-reached'
+    elif change == 'executable':
+        report['reader_settings'][report['recommendation']['policy']]['engine'] = '__import__("os")'
+    profile.write_text(json.dumps(report))
+    target = tmp_path/'frame.npy'
+    queried = CliRunner().invoke(app, ['query-field', str(root), 'case', 'velocity',
+        '--profile', str(profile), '--select', 'time=2',
+        '--select', 'x=::3' if change == 'region' else 'x=::2',
+        '--select', 'y=::2', '--select', 'z=::2', '--out', str(target)])
+    assert queried.exit_code != 0 and not target.exists()
+
+
+def test_tune_deadline_saves_diagnostics_without_reusable_recommendation(tuning_dataset, tmp_path):
+    import json
+
+    root, _ = tuning_dataset
+    profile = tmp_path/'partial.json'
+    result = _tune_report(root, profile, '--time-budget-s', '.001')
+    assert result.exit_code == 0, result.output
+    report = json.loads(profile.read_text())
+    assert report['state'] == 'time-budget-reached' and report['recommendation'] is None
+
+
+def test_report_publication_cannot_replace_a_racing_creator(tmp_path, monkeypatch):
+    import os
+
+    from frontier_data.tuning import save_report
+
+    target = tmp_path/'profile.json'
+    link = os.link
+
+    def race(source, destination):
+        target.write_text('another creator')
+        return link(source, destination)
+
+    monkeypatch.setattr(os, 'link', race)
+    with pytest.raises(FileExistsError):
+        save_report(target, {'state': 'completed'})
+    assert target.read_text() == 'another creator'
+    assert not list(tmp_path.glob('*.partial'))
+
+
+def test_profile_reader_controls_cannot_override_measured_settings(tuning_dataset, tmp_path):
+    from typer.testing import CliRunner
+
+    from frontier_data.cli import app
+
+    root, _ = tuning_dataset
+    result = CliRunner().invoke(app, ['query-field', str(root), 'case', 'velocity',
+        '--profile', str(tmp_path/'unused.json'), '--engine', 'tensorstore'])
+    assert result.exit_code != 0 and 'without manual reader settings' in result.output

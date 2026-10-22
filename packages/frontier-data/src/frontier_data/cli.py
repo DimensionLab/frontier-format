@@ -89,6 +89,9 @@ def query_field(
     ] = None,
     lod: Annotated[int, typer.Option(min=0, help="Stored level of detail; 0 is finest")] = 0,
     budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    profile: Annotated[
+        Path | None, typer.Option(help="Completed tune-field report for this field and region")
+    ] = None,
     range_policy: Annotated[
         Path | None, typer.Option(help="Zarr range policy JSON; per-batch fetch limits")
     ] = None,
@@ -114,6 +117,20 @@ def query_field(
     from frontier_data.query import FieldReader, parse_selectors
 
     try:
+        if profile is not None:
+            from frontier_data.tuning import profiled_field
+
+            if (engine != 'zarr-python' or read_strategy != 'native' or gather_workers != 4
+                    or budget_mib != 128 or range_policy is not None or plan_workers is not None
+                    or total_read_budget_mib is not None):
+                raise ValueError('Use --profile without manual reader settings or buffer limits')
+            selectors = parse_selectors(select or [])
+            reader, receipt = profiled_field(profile, dataset, sample, field, selectors,
+                                             location=location, lod=lod)
+            _query_field_output(reader, selectors, sample, field, reader.session.engine,
+                out, max_output_mib, {'kind': 'dataset', 'path': str(dataset.resolve()),
+                    'location': reader.location, 'lod': reader.lod, 'profile': receipt})
+            return
         policy = None
         if range_policy is not None:
             with range_policy.open('rb') as handle:
@@ -159,7 +176,61 @@ def query_field(
             plan_workers=plan_workers,
             total_read_budget_mib=total_read_budget_mib,
         )
-    except (ValueError, KeyError, OSError, ImportError, MemoryError) as exc:
+    except (ValueError, KeyError, OSError, ImportError, MemoryError, TypeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command('tune-field')
+def tune_field_command(
+    dataset: Path, sample: str, field: str,
+    vary: Annotated[str, typer.Option(help='Dimension whose representative regions are measured')],
+    select: Annotated[
+        list[str] | None, typer.Option(help='Fixed region on other dimensions')
+    ] = None,
+    engine: Annotated[
+        list[str] | None, typer.Option(help='Engines to compare; default: all three')
+    ] = None,
+    count: Annotated[int, typer.Option(min=1, max=4096)] = 8,
+    workers: Annotated[list[int] | None, typer.Option(min=1, max=256)] = None,
+    gather_workers: Annotated[int, typer.Option(min=1, max=256)] = 8,
+    native_threads: Annotated[int, typer.Option(min=1, max=256)] = 8,
+    location: str | None = None, lod: Annotated[int, typer.Option(min=0)] = 0,
+    total_read_budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    max_output_mib: Annotated[int, typer.Option(min=1)] = 1024,
+    repeats: Annotated[int, typer.Option(min=1, max=100)] = 3,
+    time_budget_s: Annotated[float, typer.Option(min=0.001)] = 60,
+    out: Annotated[
+        Path | None, typer.Option(help='Save JSON report without replacing a file')
+    ] = None,
+) -> None:
+    """Compare exact reads and save a recommendation reusable with query-field --profile."""
+    import os
+
+    from arrayroute.settings import ReadSettings
+    from frontier_data.query import parse_selectors
+    from frontier_data.tuning import save_report, tune_field
+
+    try:
+        if out is not None and os.path.lexists(out):
+            raise FileExistsError(out)
+        engines = engine or ['zarr-python', 'zarrista', 'tensorstore']
+        if len(set(engines)) != len(engines):
+            raise ValueError('Choose each engine only once')
+        settings = []
+        for name in engines:
+            for strategy in (['native', 'dense', 'parallel', 'bulk'] if name == 'zarrista'
+                             else ['native']):
+                settings.append(ReadSettings(name, strategy,
+                    gather_workers if strategy in {'parallel', 'bulk'} else 4,
+                    native_threads if name == 'tensorstore' else 1))
+        report = tune_field(dataset, sample, field, vary=vary, fixed=parse_selectors(select or []),
+            settings=settings, count=count, worker_counts=workers or [1, 2, 4],
+            total_buffer_bytes=total_read_budget_mib << 20, max_output_bytes=max_output_mib << 20,
+            repeats=repeats, time_budget_seconds=time_budget_s, location=location, lod=lod)
+        if out is not None:
+            save_report(out, report)
+        typer.echo(json.dumps(report, indent=2))
+    except (ValueError, KeyError, OSError, ImportError, MemoryError, TypeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
 
