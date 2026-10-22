@@ -99,10 +99,13 @@ class ArrayFieldReader:
             "output_bytes": cost.output_bytes,
             "chunks_touched": cost.chunks_touched,
             "decoded_bytes_upper_bound": cost.decoded_bytes_upper_bound,
+            "peak_decoded_bytes_upper_bound": cost.peak_decoded_bytes_upper_bound,
+            "peak_read_buffer_bytes_upper_bound": cost.buffer_bytes_upper_bound,
             "decode_amplification": cost.decode_amplification,
             "read_buffer_bytes": self.reader.buffer_bytes,
-            "memory_scope": "Output and decoded-chunk estimate; excludes backend caches, "
-            "codec scratch and consumer-retained values",
+            "memory_scope": "Output plus peak live decoded chunks; decode work is reported "
+            "separately. Excludes encoded transport, shard indexes, backend caches, codec "
+            "scratch and consumer-retained values",
         }
 
     def read(

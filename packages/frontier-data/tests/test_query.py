@@ -581,6 +581,29 @@ def test_description_reads_no_values_and_normalizes_selection():
     assert description["output_bytes"] == 66 * 4
 
 
+def test_description_separates_decode_work_from_live_memory_with_scientific_units():
+    from arrayroute import ArrayReader, ArraySpec, DecodeWindow
+    from frontier_data.query import ArrayFieldReader
+
+    class MetadataOnly:
+        spec = ArraySpec((100, 200, 3), (10, 20, 3), 4, DecodeWindow(1, strided_only=True))
+        dtype = np.dtype("float32")
+
+        def read(self, selection):
+            raise AssertionError("Planning must not load simulation fields")
+
+    reader = ArrayFieldReader(ArrayReader(MetadataOnly()), ("time", "cell", "component"),
+                              "m/s", "cell", "revision-123")
+    selection = {"time": -1, "cell": slice(2, 200, 3), "component": 1}
+    description = reader.describe(selection)
+    assert description["units"] == "m/s" and description["association"] == "cell"
+    assert description["decoded_bytes_upper_bound"] == 24_000
+    assert description["peak_decoded_bytes_upper_bound"] == 2_400
+    assert description["peak_read_buffer_bytes_upper_bound"] == 2_400 + 66 * 4
+    concurrency = reader.plan_concurrency(selection, total_buffer_bytes=24_000, max_workers=8)
+    assert concurrency.max_workers_without_tiling == 8
+
+
 def test_prefetched_scientific_regions_keep_metadata_and_cancel(tmp_path):
     from threading import Event
 
