@@ -6,6 +6,36 @@ from frontier_data.dataset import Dataset, DatasetWriter
 from frontier_data.query import FieldReader, parse_selectors
 
 
+@pytest.mark.parametrize("engine", ["zarr-python", "tensorstore", "zarrista"])
+def test_cli_measures_customer_regions_with_units_and_verified_reads(tmp_path, engine):
+    import json
+
+    from typer.testing import CliRunner
+
+    from frontier_data.cli import app
+
+    writer = DatasetWriter(tmp_path / "data", "engineer field pilot")
+    values = np.arange(4 * 8**3, dtype=np.float32).reshape(4, 8, 8, 8, 1)
+    writer.write_grid_sample(
+        "case", fields={"pressure": values}, times=[0.0, 0.1, 0.2, 0.3],
+        spacing=[0.1] * 3, field_units={"pressure": "Pa"},
+    )
+    writer.finalize()
+    args = ["benchmark-field", str(tmp_path / "data"), "case", "pressure", "--vary", "time",
+            "--count", "3", "--select", "x=1:7:2", "--workers", "1", "--workers", "2",
+            "--repeats", "1", "--engine", engine]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["state"] == "completed" and report["units"] == "Pa"
+    assert report["selected_indices"] == [0, 1, 3]
+    assert len(report["reference_sha256"]) == 3 and len(report["trials"]) == 2
+    assert report["planned_output_bytes"] == 3 * 3 * 8 * 8 * 3 * 4
+    assert all(trial["verified"] for trial in report["trials"])
+    refused = CliRunner().invoke(app, [*args, "--select", "time=1"])
+    assert refused.exit_code != 0 and "Choose --vary" in refused.output
+
+
 def test_cli_concurrency_plan_reads_metadata_only(tmp_path, monkeypatch):
     import json
 

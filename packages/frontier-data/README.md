@@ -110,6 +110,31 @@ batches, cached data and model memory are additional. Benchmark viable candidate
 your own storage before selecting a training configuration. These planning options do
 not change the separate `--budget-mib` used when exporting a field.
 
+Measure the viable settings on an unchanged dataset:
+
+```bash
+python -m frontier_data benchmark-field ./dataset case-1 velocity --vary time \
+  --count 8 --select x=0:64 --select y=0:64 --select z=0:64 \
+  --workers 1 --workers 2 --workers 4 --engine tensorstore \
+  --total-read-budget-mib 256 --max-output-mib 1024 --time-budget-s 60 > read-pilot.json
+```
+
+This samples evenly spaced **indices** along the chosen dimension, keeping the other
+selected regions fixed. Every read must match a sequential reference. The report retains
+field units, selection identities, hashes, individual shuffled trials and the fastest
+observed worker count. It does not automatically alter training settings. The decoded
+output cap includes the reference and all repetitions; it is checked before payload reads.
+The time budget stops new reads but must wait for an in-flight native read. For a hard
+deadline, run the command in a process controlled by your scheduler.
+
+Timing includes opening worker readers, reading, hashing and thread teardown. Repeated
+regions may fit in OS caches, so this is not cold-storage bandwidth or training throughput.
+Native caches, decoder scratch and small hash buffers are outside the read-buffer budget.
+Install `frontier-data[readers]` for TensorStore or Zarrista; the same command works with
+the default Zarr-Python engine. Keep the dataset fixed during a pilot; changed metadata or
+values cause an error rather than a recommendation. A timed-out pilot returns partial
+evidence with no recommended setting.
+
 Inspect a region before reading it, then optionally export it:
 
 ```sh

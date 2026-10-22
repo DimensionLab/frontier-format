@@ -131,6 +131,78 @@ def query_field(
         raise typer.BadParameter(str(exc)) from exc
 
 
+@app.command("benchmark-field")
+def benchmark_field(
+    dataset: Path,
+    sample: str,
+    field: str,
+    vary: Annotated[str, typer.Option(help="Dimension to sample, e.g. time or x")],
+    select: Annotated[
+        list[str] | None, typer.Option(help="Fixed region on other dimensions")
+    ] = None,
+    count: Annotated[int, typer.Option(min=1, max=4096)] = 8,
+    workers: Annotated[list[int] | None, typer.Option(min=1, max=256)] = None,
+    engine: str = "zarr-python",
+    location: str | None = None,
+    lod: Annotated[int, typer.Option(min=0)] = 0,
+    total_read_budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    max_output_mib: Annotated[
+        int, typer.Option(min=1, help="All passes, decoded output cap")
+    ] = 1024,
+    repeats: Annotated[int, typer.Option(min=1, max=100)] = 3,
+    time_budget_s: Annotated[
+        float, typer.Option(min=0.001, help="Stops new reads; an active native read must finish")
+    ] = 60,
+) -> None:
+    """Measure verified reads on your unchanged dataset; report settings without applying them."""
+    import hashlib
+
+    from arrayroute.probe import probe_reads
+    from arrayroute.session import LocalReadSession
+    from frontier_data.arrays import Sample
+    from frontier_data.dataset import Dataset
+    from frontier_data.query import FieldReader, parse_selectors
+
+    try:
+        directory = Dataset(dataset).sample_dir(sample)
+        meta_path = directory / "meta.json"
+        metadata_hash = hashlib.sha256(meta_path.read_bytes()).hexdigest()
+
+        def open_field(budget):
+            return FieldReader(
+                Sample.open(directory, sample_id=sample), field, location=location, lod=lod,
+                session=LocalReadSession(engine, buffer_bytes=budget, tensorstore_threads=1),
+            )
+
+        prototype = open_field(total_read_budget_mib << 20)
+        fixed = parse_selectors(select or [])
+        if vary not in prototype.dimensions or vary in fixed:
+            raise ValueError(f"Choose --vary from {prototype.dimensions}, outside --select")
+        length = prototype.reader.backend.spec.shape[prototype.dimensions.index(vary)]
+        count = min(count, length)
+        indices = [i * (length - 1) // (count - 1) if count > 1 else 0 for i in range(count)]
+        regions = [prototype.selection({**fixed, vary: i}) for i in indices]
+        result = probe_reads(
+            lambda budget: open_field(budget).reader, regions,
+            worker_counts=workers or [1, 2, 4], total_buffer_bytes=total_read_budget_mib << 20,
+            max_output_bytes=max_output_mib << 20, time_budget_seconds=time_budget_s,
+            repeats=repeats,
+        )
+        if hashlib.sha256(meta_path.read_bytes()).hexdigest() != metadata_hash:
+            raise ValueError("Sample metadata changed during the pilot")
+        result.update(
+            dataset=str(dataset.resolve()), sample=sample, field=field, engine=engine,
+            units=prototype.units, association=prototype.association,
+            varied_dimension=vary, selected_indices=indices, metadata_sha256=metadata_hash,
+            fixed_region={key: str(value) for key, value in fixed.items()},
+            native_thread_policy="TensorStore: one thread in each native pool per reader; "
+                                 "other engines use defaults",
+        )
+        typer.echo(json.dumps(result, indent=2))
+    except (ValueError, KeyError, IndexError, OSError, ImportError, MemoryError, TypeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 def _query_field_output(
     reader, selectors, sample, field, engine, out, max_output_mib, source,
     *, plan_workers=None, total_read_budget_mib=None,
