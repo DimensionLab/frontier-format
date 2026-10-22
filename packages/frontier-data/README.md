@@ -12,6 +12,20 @@ Install the wheel from the release bundle:
 pip install --no-index --find-links wheels frontier-data
 ```
 
+For the latest public source integration, install the sibling libraries together
+inside a Python 3.11–3.13 environment. Source releases may precede PyPI releases:
+
+```bash
+git clone https://github.com/DimensionLab/arrayroute.git
+git clone https://github.com/DimensionLab/frontier-format.git
+python -m pip install './arrayroute/packages/arrayroute[tensorstore,zarrista,disk-cache]' \
+  ./frontier-format/packages/frontier-plugins \
+  './frontier-format/packages/frontier-data[readers]'
+```
+
+Pin the repository commits when reproducing an experiment. These packages do not
+require the private Frontier application or an account.
+
 The Well converter reads HDF5 and needs the extra `frontier-data[ingest]`.
 `frontier-data[readers]` installs the TensorStore and Zarrista reader engines;
 `frontier-data[server]` installs the SDK and HTTP client for server-backed board runs
