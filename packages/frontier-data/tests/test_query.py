@@ -921,3 +921,31 @@ def test_profile_reader_controls_cannot_override_measured_settings(tuning_datase
     result = CliRunner().invoke(app, ['query-field', str(root), 'case', 'velocity',
         '--profile', str(tmp_path/'unused.json'), '--engine', 'tensorstore'])
     assert result.exit_code != 0 and 'without manual reader settings' in result.output
+
+
+def test_customer_records_field_workload_without_losing_si_metadata(tuning_dataset, tmp_path):
+    from arrayroute.budget import ReadBudget
+    from arrayroute.cache_policy import AccessTrace, TraceRecorder, compare_cache_policies
+
+    root, values = tuning_dataset
+    original = FieldReader(Dataset(root).sample('case'), 'velocity')
+    original.snapshot_id, original.retention_tag = 'immutable-snapshot', 'research-retention'
+    original.reader.shared_budget = ReadBudget(32 << 20)
+    original.reader.buffer_bytes = 16 << 20
+    recorder = TraceRecorder()
+    observed = original.with_access_trace(recorder, identity='case@revision:velocity:m/s')
+    assert observed.reader.shared_budget is original.reader.shared_budget
+    assert observed.reader.buffer_bytes == original.reader.buffer_bytes
+    assert observed.retention_tag == original.retention_tag
+    for t in [0, 1, 2, 3] * 4:
+        result = observed.read({'time': t})
+        assert result.units == 'm/s' and result.dimensions == original.dimensions[1:]
+        assert result.snapshot_id == original.snapshot_id
+        assert result.values.tobytes() == values[t].tobytes()
+    path = tmp_path / 'cache-workload.json'
+    recorder.snapshot().save(path)
+    frame_bytes = values[0].nbytes
+    report = compare_cache_policies(AccessTrace.load(path),
+        capacities_bytes=(2 * frame_bytes,), max_entry_bytes=frame_bytes, training_reads=8)
+    assert report['rows'][0]['recommendation'] == 'retain'
+    assert report['rows'][0]['policies']['retain']['validation']['hits'] == 4

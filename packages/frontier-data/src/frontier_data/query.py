@@ -16,6 +16,7 @@ from arrayroute.quality import ErrorAccumulator, ErrorAssessment
 from arrayroute.session import LocalReadSession
 
 if TYPE_CHECKING:
+    from arrayroute.cache_policy import TraceRecorder
     from arrayroute.retention import RetentionPin
     from arrayroute.snapshot import SnapshotReadSession
     from frontier_data.arrays import Sample
@@ -44,6 +45,14 @@ class ArrayFieldReader:
     association: str
     snapshot_id: str | None = None
     retention_tag: str | None = None
+
+    def with_access_trace(self, recorder: TraceRecorder, *, identity: str) -> ArrayFieldReader:
+        """Observe this field's reads while preserving units, provenance and buffer limits."""
+        reader = ArrayReader(recorder.backend(self.reader.backend, identity=identity),
+                             buffer_bytes=self.reader.buffer_bytes,
+                             shared_budget=self.reader.shared_budget)
+        return ArrayFieldReader(reader, self.dimensions, self.units, self.association,
+                                self.snapshot_id, self.retention_tag)
 
     def __post_init__(self) -> None:
         if (

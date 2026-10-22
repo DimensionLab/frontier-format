@@ -391,3 +391,31 @@ must be authorized node-local disk, not NFS or a shared cloud filesystem. No sav
 account credentials enter cache identities. Retained tiles survive process restarts;
 use a fresh cache directory after a revision or working-set change. Source datasets
 are never modified by cache admission.
+
+To compare cache choices from your actual inspection or training access pattern,
+add an optional access trace while the field's source and session are open:
+
+```python
+from arrayroute.cache_policy import TraceRecorder, compare_cache_policies
+
+capture = TraceRecorder(max_events=10_000)
+observed = field.with_access_trace(
+    capture, identity="study@immutable-revision:velocity:physical-m/s-v1",
+)
+# Run a short representative serial workload using observed.read(...).
+# Named dimensions, SI units, snapshot identity and shared buffer limits are preserved.
+trace = capture.snapshot()
+trace.save("study-access.json")
+report = compare_cache_policies(
+    trace, capacities_bytes=(120 << 20, 240 << 20), max_entry_bytes=32 << 20,
+    training_reads=len(trace.accesses) // 2, entry_overhead_bytes=40,
+)
+```
+
+Choose a pilot with repeated reads and a later validation segment. The report selects
+no cache, LRU or retain on the prefix and checks it against LRU on the held-out suffix.
+It does not apply settings. Sizes are decoded byte estimates with a usable payload
+capacity, not compressed network traffic or a disk quota; reserve database/filesystem
+space separately and confirm latency with actual reads. Truncated or failed traces
+are rejected; overlapping calls receive no recommendation. See ArrayRoute's cache
+policy documentation for capture limits and the standalone comparison command.
