@@ -153,13 +153,15 @@ def test_cli_concurrency_plan_reads_metadata_only(tmp_path, monkeypatch):
         assert refused.exit_code != 0 and "Provide both" in refused.output
 
 
-def test_remote_connector_preserves_scientific_metadata_and_comparison(tmp_path):
+@pytest.mark.parametrize('admission', [None, 'lru', 'retain'])
+def test_remote_connector_preserves_scientific_metadata_and_comparison(tmp_path, admission):
     import functools
     import threading
     from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
     import zarr
 
+    from arrayroute.disk_cache import ArrayIdentity, TileCache
     from arrayroute.remote import HttpStore, RemoteReadSession
     from arrayroute.session import LocalReadSession
     from frontier_data.query import ArrayFieldReader, compare_fields
@@ -177,8 +179,13 @@ def test_remote_connector_preserves_scientific_metadata_and_comparison(tmp_path)
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    cache = (TileCache(tmp_path/'tiles', capacity_bytes=4 << 20, max_entry_bytes=1 << 20,
+                       admission=admission) if admission else None)
     try:
-        session = RemoteReadSession(HttpStore(f"http://127.0.0.1:{server.server_port}"))
+        session = RemoteReadSession(HttpStore(f"http://127.0.0.1:{server.server_port}"),
+            tile_cache=cache,
+            cache_identity=ArrayIdentity('pressure-study', 'immutable-v1', 'Pa-v1') if cache
+            else None)
         remote = ArrayFieldReader(session.open("pressure"), ("time", "cell"), "Pa", "cell")
         local = ArrayFieldReader(
             LocalReadSession().open(tmp_path, "pressure"), ("time", "cell"), "Pa", "cell"
@@ -189,11 +196,15 @@ def test_remote_connector_preserves_scientific_metadata_and_comparison(tmp_path)
         assert result.dimensions == ("time",)
         np.testing.assert_array_equal(result.values, values[1:6:2, 3])
         assert compare_fields(local, remote, selection, absolute_tolerance=0).passed
+        if cache:
+            assert remote.reader.backend.stats.hits == 1
         with pytest.raises(ValueError, match="dimensions"):
             ArrayFieldReader(remote.reader, ("time", "time"), "Pa", "cell")
         with pytest.raises(ValueError, match="declared"):
             ArrayFieldReader(remote.reader, ("time", "cell"), "", "cell")
     finally:
+        if cache:
+            cache.close()
         server.shutdown()
         server.server_close()
         thread.join()

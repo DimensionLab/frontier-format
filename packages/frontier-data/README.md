@@ -354,3 +354,40 @@ in-flight native reads. The output cap counts selected bytes across all trials, 
 storage traffic. The buffer allowance excludes native caches and codec scratch and
 is not an RSS limit. Profiles are advisory local performance records, not authenticated
 data snapshots or an integrity guarantee for future values.
+
+### Repeated remote field reads with a local cache
+
+Install the `readers` extra for optional reader engines and disk caching. Choose
+`admission="retain"` for a fixed dataset scanned repeatedly when it exceeds cache
+capacity; use `"lru"` when the active region changes. Measure uncached reads as well.
+
+```python
+from arrayroute.disk_cache import ArrayIdentity, TileCache
+from arrayroute.remote import HttpStore, RemoteReadSession
+from frontier_data.query import ArrayFieldReader
+
+cache = TileCache("/local-ssd/my-user/study-revision-tiles",
+                  capacity_bytes=8 << 30, max_entry_bytes=32 << 20,
+                  admission="retain")
+session = RemoteReadSession(
+    HttpStore("https://my-storage.example/study/immutable-revision"),
+    tile_cache=cache,
+    cache_identity=ArrayIdentity("study", "immutable-revision", "velocity-SI-v1"),
+)
+try:
+    field = ArrayFieldReader(session.open("velocity"),
+                            ("time", "x", "y", "z", "component"), "m/s", "grid")
+    values = field.read({"time": 17, "x": slice(0, 64),
+                         "y": slice(0, 64), "z": slice(0, 64)})
+    print(values.units, values.dimensions)
+finally:
+    session.clear()
+    cache.close()
+```
+
+The connector must supply the real dimensions, units, immutable revision and array
+path from its scientific metadata. The example does not infer them. Cache storage
+must be authorized node-local disk, not NFS or a shared cloud filesystem. No saved
+account credentials enter cache identities. Retained tiles survive process restarts;
+use a fresh cache directory after a revision or working-set change. Source datasets
+are never modified by cache admission.
