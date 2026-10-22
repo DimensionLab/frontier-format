@@ -78,6 +78,9 @@ def query_field(
         list[str] | None, typer.Option(help="Named index/slice, e.g. time=10 x=20:80")
     ] = None,
     engine: str = "zarr-python",
+    read_strategy: Annotated[
+        str, typer.Option(help="native or dense; bulk only within budget and without extra chunks")
+    ] = "native",
     location: Annotated[
         str | None, typer.Option(help="Scientific location: point, cell, grid or global")
     ] = None,
@@ -129,7 +132,8 @@ def query_field(
             lod=lod,
             engine=engine,
             buffer_bytes=budget_mib << 20,
-            session=LocalReadSession(engine, buffer_bytes=budget_mib << 20, range_policy=policy),
+            session=LocalReadSession(engine, buffer_bytes=budget_mib << 20,
+                                     range_policy=policy, read_strategy=read_strategy),
         )
         _query_field_output(
             reader,
@@ -145,6 +149,7 @@ def query_field(
                 "location": reader.location,
                 "lod": reader.lod,
                 "range_policy": asdict(policy) if policy is not None else None,
+                "read_strategy": read_strategy,
             },
             plan_workers=plan_workers,
             total_read_budget_mib=total_read_budget_mib,
@@ -165,6 +170,9 @@ def benchmark_field(
     count: Annotated[int, typer.Option(min=1, max=4096)] = 8,
     workers: Annotated[list[int] | None, typer.Option(min=1, max=256)] = None,
     engine: str = "zarr-python",
+    read_strategy: Annotated[
+        str, typer.Option(help="native or dense; compare on your selected field regions")
+    ] = "native",
     location: str | None = None,
     lod: Annotated[int, typer.Option(min=0)] = 0,
     total_read_budget_mib: Annotated[int, typer.Option(min=1)] = 128,
@@ -193,7 +201,8 @@ def benchmark_field(
         def open_field(budget):
             return FieldReader(
                 Sample.open(directory, sample_id=sample), field, location=location, lod=lod,
-                session=LocalReadSession(engine, buffer_bytes=budget, tensorstore_threads=1),
+                session=LocalReadSession(engine, buffer_bytes=budget, tensorstore_threads=1,
+                                         read_strategy=read_strategy),
             )
 
         prototype = open_field(total_read_budget_mib << 20)
@@ -214,6 +223,7 @@ def benchmark_field(
             raise ValueError("Sample metadata changed during the pilot")
         result.update(
             dataset=str(dataset.resolve()), sample=sample, field=field, engine=engine,
+            read_strategy=read_strategy,
             units=prototype.units, association=prototype.association,
             varied_dimension=vary, selected_indices=indices, metadata_sha256=metadata_hash,
             fixed_region={key: str(value) for key, value in fixed.items()},

@@ -7,7 +7,8 @@ from frontier_data.query import FieldReader, parse_selectors
 
 
 @pytest.mark.parametrize('engine', ['zarr-python', 'tensorstore', 'zarrista'])
-def test_engineer_parallel_field_readers_share_budget_and_keep_units(tmp_path, engine):
+@pytest.mark.parametrize('strategy', ['native', 'dense'])
+def test_engineer_parallel_field_readers_share_budget_and_keep_units(tmp_path, engine, strategy):
     from concurrent.futures import ThreadPoolExecutor
 
     from arrayroute.budget import ReadBudget
@@ -25,7 +26,8 @@ def test_engineer_parallel_field_readers_share_budget_and_keep_units(tmp_path, e
 
     def inspect(i):
         field = 'velocity' if i % 2 else 'pressure'
-        session = LocalReadSession(engine, read_budget=pool, buffer_bytes=512 << 10)
+        session = LocalReadSession(engine, read_budget=pool, buffer_bytes=512 << 10,
+                                   read_strategy=strategy)
         reader = FieldReader(Dataset(tmp_path).sample('case'), field, session=session)
         result = reader.read({'time': i % 2, 'x': slice(None, None, 2)})
         expected = (velocity if field == 'velocity' else pressure)[i % 2, ::2]
@@ -85,7 +87,8 @@ def test_customer_range_policy_exports_exact_sharded_field_and_records_limits(tm
 
 
 @pytest.mark.parametrize("engine", ["zarr-python", "tensorstore", "zarrista"])
-def test_cli_measures_customer_regions_with_units_and_verified_reads(tmp_path, engine):
+@pytest.mark.parametrize("strategy", ["native", "dense"])
+def test_cli_measures_customer_regions_with_units_and_verified_reads(tmp_path, engine, strategy):
     import json
 
     from typer.testing import CliRunner
@@ -101,7 +104,7 @@ def test_cli_measures_customer_regions_with_units_and_verified_reads(tmp_path, e
     writer.finalize()
     args = ["benchmark-field", str(tmp_path / "data"), "case", "pressure", "--vary", "time",
             "--count", "3", "--select", "x=1:7:2", "--workers", "1", "--workers", "2",
-            "--repeats", "1", "--engine", engine]
+            "--repeats", "1", "--engine", engine, "--read-strategy", strategy]
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 0, result.output
     report = json.loads(result.output)
@@ -707,3 +710,39 @@ def test_global_signal_selection_preserves_units(tmp_path):
     result = reader.read({"time": slice(1, 4, 2)})
     assert result.units == "m^3/s" and result.association == "global"
     np.testing.assert_array_equal(result.values.ravel(), values[1:4:2])
+
+
+@pytest.mark.parametrize('budget,step,expected', [
+    (1, 2, 'native'), (16, 2, 'dense-gather'), (16, 23, 'native'),
+])
+def test_customer_dense_policy_reports_cost_and_exports_exact_si_field(
+    tmp_path, budget, step, expected,
+):
+    import json
+
+    from typer.testing import CliRunner
+
+    from arrayroute.layout import GridLayoutPolicy
+    from frontier_data.cli import app
+
+    values = np.random.default_rng(183).normal(size=(1, 64, 64, 64, 3)).astype('f4')
+    writer = DatasetWriter(tmp_path / 'data', 'dense preview')
+    writer.write_grid_sample('case', fields={'velocity': values}, times=[0],
+        spacing=[.2] * 3, field_units={'velocity': 'm/s'},
+        storage_layout=GridLayoutPolicy(chunk_edge=8, shard_edge=32))
+    writer.finalize()
+    output = tmp_path / 'preview.npy'
+    args = ['query-field', str(tmp_path / 'data'), 'case', 'velocity',
+            '--engine', 'zarrista', '--read-strategy', 'dense', '--select', 'time=0',
+            '--budget-mib', str(budget), '--out', str(output)]
+    for axis in ['x', 'y', 'z']:
+        args.extend(['--select', f'{axis}=::{step}'])
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report['read_strategy'] == expected
+    assert report['source']['read_strategy'] == 'dense'
+    assert report['units'] == 'm/s'
+    assert report['peak_read_buffer_bytes_upper_bound'] <= budget << 20
+    assert (report['intermediate_bytes_upper_bound'] > 0) == (expected == 'dense-gather')
+    assert np.load(output).tobytes() == values[0, ::step, ::step, ::step].tobytes()
