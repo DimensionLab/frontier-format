@@ -79,7 +79,7 @@ def query_field(
     ] = None,
     engine: str = "zarr-python",
     read_strategy: Annotated[
-        str, typer.Option(help="native, dense or parallel; choose with benchmark-field")
+        str, typer.Option(help="native, dense, parallel or bulk; choose with benchmark-field")
     ] = "native",
     gather_workers: Annotated[
         int, typer.Option(min=1, max=256, help="Maximum inner workers for parallel gathering")
@@ -154,7 +154,7 @@ def query_field(
                 "lod": reader.lod,
                 "range_policy": asdict(policy) if policy is not None else None,
                 "read_strategy": read_strategy,
-                "gather_workers": gather_workers if read_strategy == "parallel" else None,
+                "gather_workers": gather_workers if read_strategy in {"parallel", "bulk"} else None,
             },
             plan_workers=plan_workers,
             total_read_budget_mib=total_read_budget_mib,
@@ -176,7 +176,7 @@ def benchmark_field(
     workers: Annotated[list[int] | None, typer.Option(min=1, max=256)] = None,
     engine: str = "zarr-python",
     read_strategy: Annotated[
-        str, typer.Option(help="native, dense or parallel; compare on your selected field regions")
+        str, typer.Option(help="native, dense, parallel or bulk; compare on your selected regions")
     ] = "native",
     gather_workers: Annotated[
         int, typer.Option(min=1, max=256, help="Maximum inner workers for parallel gathering")
@@ -233,7 +233,7 @@ def benchmark_field(
         result.update(
             dataset=str(dataset.resolve()), sample=sample, field=field, engine=engine,
             read_strategy=read_strategy,
-            gather_workers=gather_workers if read_strategy == "parallel" else None,
+            gather_workers=gather_workers if read_strategy in {"parallel", "bulk"} else None,
             units=prototype.units, association=prototype.association,
             varied_dimension=vary, selected_indices=indices, metadata_sha256=metadata_hash,
             fixed_region={key: str(value) for key, value in fixed.items()},

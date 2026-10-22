@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
-  "arrayroute>=0.1.12,<0.2",
+  "arrayroute>=0.1.13,<0.2",
   "frontier-plugins>=1,<2",
   "scipy>=1.13",
   "numpy>=1.26",
@@ -23,13 +23,13 @@ dependencies = [
 [project.optional-dependencies]
 # The Well ingest reads HDF5; the MeshGraphNets TFRecord parser needs nothing extra.
 ingest = ["h5py>=3.10"]
-snapshots = ["arrayroute[snapshots]>=0.1.12,<0.2"]
-readers = ["arrayroute[tensorstore,zarrista]>=0.1.12,<0.2"]
+snapshots = ["arrayroute[snapshots]>=0.1.13,<0.2"]
+readers = ["arrayroute[tensorstore,zarrista]>=0.1.13,<0.2"]
 server = ["frontier>=0.9,<1", "httpx>=0.27"]
 test = [
   "pytest>=8", "meshio>=5", "h5py>=3.10",
   "frontier>=0.9,<1", "httpx>=0.27",
-  "arrayroute[tensorstore,zarrista]>=0.1.12,<0.2",
+  "arrayroute[tensorstore,zarrista]>=0.1.13,<0.2",
   "icechunk>=2.3,<3; python_version >= '3.12'",
 ]
 

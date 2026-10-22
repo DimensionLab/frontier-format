@@ -716,6 +716,7 @@ def test_global_signal_selection_preserves_units(tmp_path):
     (1, 2, 'native', 'dense'), (16, 2, 'dense-gather', 'dense'),
     (16, 23, 'native', 'dense'), (1, 2, 'parallel-gather', 'parallel'),
     (1, 23, 'parallel-gather', 'parallel'),
+    (16, 2, 'bulk-gather', 'bulk'), (1, 23, 'parallel-gather', 'bulk'),
 ])
 def test_customer_dense_policy_reports_cost_and_exports_exact_si_field(
     tmp_path, budget, step, expected, strategy,
@@ -748,10 +749,11 @@ def test_customer_dense_policy_reports_cost_and_exports_exact_si_field(
     assert report['peak_read_buffer_bytes_upper_bound'] <= budget << 20
     assert (report['intermediate_bytes_upper_bound'] > 0) == (expected != 'native')
     assert np.load(output).tobytes() == values[0, ::step, ::step, ::step].tobytes()
-    assert report['gather_workers'] == (4 if strategy == 'parallel' else 1)
+    assert report['gather_workers'] == (4 if strategy in {'parallel', 'bulk'} else 1)
 
 
-def test_customer_parallel_benchmark_reports_actual_inner_workers(tmp_path):
+@pytest.mark.parametrize('strategy,budget', [('parallel', 1), ('bulk', 8)])
+def test_customer_parallel_benchmark_reports_actual_inner_workers(tmp_path, strategy, budget):
     import json
 
     from typer.testing import CliRunner
@@ -766,15 +768,15 @@ def test_customer_parallel_benchmark_reports_actual_inner_workers(tmp_path):
         storage_layout=GridLayoutPolicy(chunk_edge=8, shard_edge=32))
     writer.finalize()
     result = CliRunner().invoke(app, ['benchmark-field', str(tmp_path/'data'), 'case',
-        'velocity', '--engine', 'zarrista', '--read-strategy', 'parallel', '--gather-workers', '8',
+        'velocity', '--engine', 'zarrista', '--read-strategy', strategy, '--gather-workers', '8',
         '--vary', 'time', '--count', '3', '--select', 'x=::4', '--select', 'y=::2',
         '--workers', '1', '--workers', '2',
-        '--total-read-budget-mib', '1', '--repeats', '1'])
+        '--total-read-budget-mib', str(budget), '--repeats', '1'])
     assert result.exit_code == 0, result.output
     report = json.loads(result.output)
     assert report['units'] == 'm/s' and report['state'] == 'completed'
     assert report['gather_workers'] == 8
-    assert all(t['verified'] and t['read_strategies'] == {'parallel-gather': 3}
+    assert all(t['verified'] and t['read_strategies'] == {f'{strategy}-gather': 3}
                for t in report['trials'])
     actual = {t['workers']: t['gather_workers_peak'] for t in report['trials']}
     assert actual[1] > actual[2] and actual[2] >= 2

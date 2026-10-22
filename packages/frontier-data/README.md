@@ -260,6 +260,25 @@ with/without explicit storage measurement, verifies identical catalog output, re
 and source hashes, and includes process startup in its timings. Record concurrent work and
 storage/cache conditions when reporting results. It does not measure simulation read throughput.
 
+### Comparing bulk shard reads
+
+For sharded Zarr fields with many small inner chunks, compare bulk shard reads with
+partial reads on the field you intend to train or visualize:
+
+```sh
+frontier-data benchmark-field ./dataset case-1 velocity --engine zarrista \
+  --read-strategy bulk --gather-workers 8 --vary time --count 8 \
+  --select x=::8 --select y=::8 --select z=::8 --workers 1 \
+  --total-read-budget-mib 8
+```
+
+Repeat with `--read-strategy parallel`, or `--engine tensorstore --read-strategy native`
+without the inner-worker option. Compare the same selections and allowances. Bulk
+reads are optional; they can help small shards but hurt large ones. The report shows
+the actual strategies and admitted inner workers. Skipped chunks and tight budgets
+select partial decoding. `query-field` accepts the same policy and preserves units
+in its JSON receipt alongside exact NPY output. This does not rewrite the dataset.
+
 ### Indexed metadata catalogs
 
 For large manifests, create a portable metadata snapshot once and browse it without
