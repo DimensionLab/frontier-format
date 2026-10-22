@@ -6,6 +6,42 @@ from frontier_data.dataset import Dataset, DatasetWriter
 from frontier_data.query import FieldReader, parse_selectors
 
 
+def test_cli_concurrency_plan_reads_metadata_only(tmp_path, monkeypatch):
+    import json
+
+    from typer.testing import CliRunner
+
+    from arrayroute import ArrayReader
+    from frontier_data.cli import app
+
+    writer = DatasetWriter(tmp_path / "data", "reader planning")
+    writer.write_grid_sample(
+        "case", fields={"velocity": np.zeros((1, 128, 128, 128, 3), np.float32)},
+        times=[0.0], spacing=[0.1] * 3, field_units={"velocity": "m/s"},
+    )
+    writer.finalize()
+
+    def no_field_reads(*args, **kwargs):
+        raise AssertionError("Planning must not load field values")
+
+    monkeypatch.setattr(ArrayReader, "read", no_field_reads)
+    monkeypatch.setattr(ArrayReader, "stream", no_field_reads)
+    args = ["query-field", str(tmp_path / "data"), "case", "velocity", "--select", "time=0"]
+    output = CliRunner().invoke(
+        app, [*args, "--plan-workers", "8", "--total-read-budget-mib", "256"]
+    )
+    assert output.exit_code == 0, output.output
+    report = json.loads(output.output)
+    assert report["units"] == "m/s"
+    assert report["concurrency"]["max_workers_without_tiling"] == 5
+    options = {item["workers"]: item for item in report["concurrency"]["candidates"]}
+    assert options[8]["requests_per_value_lower_bound"] == 8
+    assert options[4]["materialization"] == "direct"
+    for incomplete in [["--plan-workers", "8"], ["--total-read-budget-mib", "256"]]:
+        refused = CliRunner().invoke(app, [*args, *incomplete])
+        assert refused.exit_code != 0 and "Provide both" in refused.output
+
+
 def test_remote_connector_preserves_scientific_metadata_and_comparison(tmp_path):
     import functools
     import threading

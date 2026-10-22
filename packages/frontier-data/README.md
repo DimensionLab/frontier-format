@@ -94,6 +94,22 @@ bounds output, not catalog memory or remote catalog indexing.
 
 ## Bounded field queries
 
+To plan concurrent reads without loading field values, provide a reader ceiling and a
+total read-buffer allowance. The same options work with `query-snapshot`:
+
+```bash
+python -m frontier_data query-field ./dataset case-1 velocity --select time=10 \
+  --plan-workers 8 --total-read-budget-mib 256
+```
+
+The JSON report includes the field's units, selected dimensions and candidate reader
+counts. Each candidate reports whether the region fits directly, requires tiled reads,
+needs streaming, or has a chunk too large for its buffer. A bounded tile count may be
+reported as a lower bound. This plans one selected region per concurrent reader; queued
+batches, cached data and model memory are additional. Benchmark viable candidates on
+your own storage before selecting a training configuration. These planning options do
+not change the separate `--budget-mib` used when exporting a field.
+
 Inspect a region before reading it, then optionally export it:
 
 ```sh

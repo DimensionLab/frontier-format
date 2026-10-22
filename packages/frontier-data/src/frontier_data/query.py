@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from arrayroute import ArrayReader, ReadPlan, ReadStats, Tile
+from arrayroute.concurrency import ConcurrencyPlan, plan_concurrency
 from arrayroute.quality import ErrorAccumulator, ErrorAssessment
 from arrayroute.session import LocalReadSession
 
@@ -62,6 +63,14 @@ class ArrayFieldReader:
 
     def plan(self, selectors: Mapping[str, int | slice]) -> ReadPlan:
         return self.reader.plan(self.selection(selectors))
+
+    def plan_concurrency(
+        self, selectors: Mapping[str, int | slice], *, total_buffer_bytes: int, max_workers: int
+    ) -> ConcurrencyPlan:
+        return plan_concurrency(
+            self.reader.backend.spec, self.selection(selectors),
+            total_buffer_bytes=total_buffer_bytes, max_workers=max_workers,
+        )
 
     def describe(self, selectors: Mapping[str, int | slice]) -> dict[str, object]:
         """Describe a normalized selection and estimated read costs without reading values."""

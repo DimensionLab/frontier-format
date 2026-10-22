@@ -83,6 +83,12 @@ def query_field(
     ] = None,
     lod: Annotated[int, typer.Option(min=0, help="Stored level of detail; 0 is finest")] = 0,
     budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    plan_workers: Annotated[
+        int | None, typer.Option(min=1, help="Plan up to this many concurrent readers")
+    ] = None,
+    total_read_budget_mib: Annotated[
+        int | None, typer.Option(min=1, help="Aggregate read buffers for the concurrency plan")
+    ] = None,
     max_output_mib: Annotated[
         int, typer.Option(min=1, help="Maximum exported array size; read buffers remain bounded")
     ] = 1024,
@@ -118,17 +124,24 @@ def query_field(
                 "location": reader.location,
                 "lod": reader.lod,
             },
+            plan_workers=plan_workers,
+            total_read_budget_mib=total_read_budget_mib,
         )
     except (ValueError, KeyError, OSError, ImportError, MemoryError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
 
-def _query_field_output(reader, selectors, sample, field, engine, out, max_output_mib, source):
+def _query_field_output(
+    reader, selectors, sample, field, engine, out, max_output_mib, source,
+    *, plan_workers=None, total_read_budget_mib=None,
+):
     from dataclasses import asdict
 
     from arrayroute import ReadStats
     from arrayroute.export import save_npy
 
+    if (plan_workers is None) != (total_read_budget_mib is None):
+        raise ValueError("Provide both --plan-workers and --total-read-budget-mib")
     result = {
         **reader.describe(selectors),
         "sample": sample,
@@ -136,6 +149,10 @@ def _query_field_output(reader, selectors, sample, field, engine, out, max_outpu
         "engine": engine,
         "source": source,
     }
+    if plan_workers is not None and total_read_budget_mib is not None:
+        result["concurrency"] = asdict(reader.plan_concurrency(
+            selectors, total_buffer_bytes=total_read_budget_mib << 20, max_workers=plan_workers,
+        ))
     if out is not None:
         stats = ReadStats()
         save_npy(
@@ -161,6 +178,12 @@ def query_snapshot(
     retention_purpose: str = "reader",
     select: Annotated[list[str] | None, typer.Option(help="Named index/slice")] = None,
     budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    plan_workers: Annotated[
+        int | None, typer.Option(min=1, help="Plan up to this many concurrent readers")
+    ] = None,
+    total_read_budget_mib: Annotated[
+        int | None, typer.Option(min=1, help="Aggregate read buffers for the concurrency plan")
+    ] = None,
     max_output_mib: Annotated[int, typer.Option(min=1)] = 1024,
     out: Annotated[
         Path | None, typer.Option(help="Write .npy; omit for metadata and read costs")
@@ -204,6 +227,8 @@ def query_snapshot(
             out,
             max_output_mib,
             {"kind": "snapshot", "repository": str(repository.resolve()), "array_path": array_path},
+            plan_workers=plan_workers,
+            total_read_budget_mib=total_read_budget_mib,
         )
     except (ValueError, KeyError, OSError, MemoryError, ic.IcechunkError) as exc:
         raise typer.BadParameter(str(exc)) from exc
