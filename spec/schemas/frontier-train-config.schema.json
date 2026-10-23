@@ -1217,6 +1217,20 @@
           "title": "Pin Memory",
           "type": "boolean"
         },
+        "pin_buffer_mib": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Queued pinned tensor storage per ordered loader in MiB; excludes unpinned reader outputs, allocator overhead and consumer-retained batches. Requires pin_memory; active only on CUDA.",
+          "title": "Pin Buffer Mib"
+        },
         "cache": {
           "default": true,
           "title": "Cache",
