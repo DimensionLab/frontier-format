@@ -1253,6 +1253,16 @@
           "title": "Read Engine",
           "type": "string"
         },
+        "normalization_engine": {
+          "default": "numpy",
+          "description": "Engine applying recorded float32 channel statistics. NumExpr requires the expressions extra; set NUMEXPR_NUM_THREADS before process startup. The pool is shared by threads within each process, not across ranks.",
+          "enum": [
+            "numpy",
+            "numexpr"
+          ],
+          "title": "Normalization Engine",
+          "type": "string"
+        },
         "read_buffer_mib": {
           "default": 512,
           "minimum": 1,
