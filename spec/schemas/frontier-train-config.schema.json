@@ -1176,12 +1176,40 @@
         },
         "batch_size": {
           "default": 8,
+          "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
         },
+        "batch_read": {
+          "default": "individual",
+          "description": "Read windows separately, deduplicate frames within a minibatch, or also combine adjacent reads. Benchmark on the real layout; batching is not always faster. Keeps sample order and random choices unchanged.",
+          "enum": [
+            "individual",
+            "deduplicate",
+            "coalesce"
+          ],
+          "title": "Batch Read",
+          "type": "string"
+        },
+        "loader_backend": {
+          "default": "torch",
+          "enum": [
+            "torch",
+            "ordered"
+          ],
+          "title": "Loader Backend",
+          "type": "string"
+        },
         "num_workers": {
           "default": 0,
+          "minimum": 0,
           "title": "Num Workers",
+          "type": "integer"
+        },
+        "prefetch_factor": {
+          "default": 2,
+          "minimum": 1,
+          "title": "Prefetch Factor",
           "type": "integer"
         },
         "pin_memory": {
@@ -1193,6 +1221,49 @@
           "default": true,
           "title": "Cache",
           "type": "boolean"
+        },
+        "cache_mib": {
+          "default": 256,
+          "minimum": 0,
+          "title": "Cache Mib",
+          "type": "integer"
+        },
+        "read_engine": {
+          "default": "zarr-python",
+          "enum": [
+            "zarr-python",
+            "tensorstore",
+            "zarrista"
+          ],
+          "title": "Read Engine",
+          "type": "string"
+        },
+        "read_buffer_mib": {
+          "default": 512,
+          "minimum": 1,
+          "title": "Read Buffer Mib",
+          "type": "integer"
+        },
+        "read_cache_mib": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Read Cache Mib",
+          "type": "integer"
+        },
+        "read_threads": {
+          "default": 8,
+          "minimum": 1,
+          "title": "Read Threads",
+          "type": "integer"
+        },
+        "read_resource_scope": {
+          "default": "worker",
+          "enum": [
+            "worker",
+            "loader"
+          ],
+          "title": "Read Resource Scope",
+          "type": "string"
         },
         "num_points": {
           "anyOf": [
@@ -1289,6 +1360,13 @@
             }
           ],
           "default": null
+        },
+        "validity_fields": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Validity Fields",
+          "type": "object"
         },
         "synthetic": {
           "anyOf": [
