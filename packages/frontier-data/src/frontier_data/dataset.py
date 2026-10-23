@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from frontier_data.mesh import SurfaceMesh
 
 if TYPE_CHECKING:
+    from arrayroute.session import LocalReadSession
     from frontier_data.arrays import Sample
 
 FORMAT_NAME = "frontier-dataset"
@@ -602,11 +603,11 @@ class Dataset:
         path = self.sample_dir(sample_id) / "forces.json"
         return json.loads(path.read_text()) if path.exists() else {}
 
-    def sample(self, sample_id: str) -> Sample:
+    def sample(self, sample_id: str, *, session: LocalReadSession | None = None) -> Sample:
         """Lazy v1.1 view of any sample kind: ``ds.sample(sid).field("u", t=slice(0, 4))``."""
         from frontier_data.arrays import Sample
 
-        return Sample.open(self.sample_dir(sample_id), sample_id=sample_id)
+        return Sample.open(self.sample_dir(sample_id), sample_id=sample_id, session=session)
 
     def samples(self) -> Iterator[Sample]:
         for sid in self.sample_ids:

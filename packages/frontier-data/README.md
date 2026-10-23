@@ -60,6 +60,28 @@ u = s.field("vorticity", t=slice(10, 14))  # reads four steps
 assert validate_dataset("my-dataset").ok
 ```
 
+## Read sessions and memory limits
+
+Sample fields, signals, times and geometry use ArrayRoute. The default local session uses
+Zarr-Python with a 128 MiB read-buffer allowance. Choose an explicit allowance or optional
+reader engine when needed:
+
+```python
+from arrayroute.session import LocalReadSession
+
+session = LocalReadSession(engine="zarr-python", buffer_bytes=512 << 20)
+sample = Dataset("my-dataset").sample("case_0", session=session)
+frames = sample.field("vorticity", t=[13, 10, 13])  # requested order and duplicates preserved
+```
+
+The allowance covers planned read buffers and gathered/generated outputs, not total process
+memory, native codec scratch or arrays retained by callers. Oversized selections fail before
+payload reads; select fewer steps, use `FieldReader` streaming, or choose a larger allowance.
+Sessions are worker-local and require fixed metadata. Use multiprocessing spawn for native
+engines. After changing a sample, call `refresh()` for its internally owned session, or
+`refresh(session=fresh_session)` when you supplied one. Immutable TensorStore groups require
+a fresh group too. These sample sessions support local and mounted filesystems.
+
 ## Commands
 
 Run `python -m frontier_data <command> --help` for the flags.

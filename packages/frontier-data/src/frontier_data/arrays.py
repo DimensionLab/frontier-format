@@ -26,15 +26,19 @@ A moving mesh passes ``points_t (T,N,D)`` next to the reference ``points``.
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import time as _time
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from arrayroute.layout import GridLayoutPolicy
+from arrayroute.reader import ArrayReader, ReadStats
+from arrayroute.session import LocalReadSession
 from frontier_data.dataset import (
     CHUNK_ROWS,
     FORMAT_MINOR,
@@ -1104,13 +1108,26 @@ def default_dims(location: str, ndim: int, transient: bool, kind: str) -> list[s
 
 class Sample:
     """Lazy view of one sample store. Arrays are only read when asked for, and
-    ``field(name, t=...)`` fetches just the chunks of the requested steps."""
+    ``field(name, t=...)`` fetches just the chunks of the requested steps.
 
-    def __init__(self, sample_dir: Path, kind: str, group: Any, sample_id: str | None) -> None:
+    Numerical reads use a worker-owned ArrayRoute session (128 MiB by default).
+    Read buffers and gathered outputs are admitted before payload reads; backend
+    caches, codec scratch, dtype conversions and consumer-retained arrays are separate.
+    Metadata must stay fixed while reading. Call refresh() after external writes.
+    Use spawn with native engines; a Sample and its session are not thread-safe.
+    """
+
+    def __init__(
+        self, sample_dir: Path, kind: str, group: Any, sample_id: str | None,
+        *, session: LocalReadSession | None = None,
+    ) -> None:
         self.dir = Path(sample_dir)
         self.kind = kind
-        self.group = group
+        self.group: Any = group
         self.id = sample_id or self.dir.name
+        self.read_session = session or LocalReadSession()
+        self._owns_session = session is None
+        self.read_stats = ReadStats()
         self._times: np.ndarray | None = None
         self._meta: SampleMeta | None = None
         self._store: Path | None = None
@@ -1119,7 +1136,10 @@ class Sample:
         self._dims: dict[tuple[str, str | None, int], list[str]] = {}
 
     @classmethod
-    def open(cls, sample_dir: str | Path, sample_id: str | None = None) -> Sample:
+    def open(
+        cls, sample_dir: str | Path, sample_id: str | None = None,
+        *, session: LocalReadSession | None = None,
+    ) -> Sample:
         import zarr
 
         sample_dir = Path(sample_dir)
@@ -1131,10 +1151,14 @@ class Sample:
                 f"found {names}"
             )
         kind, name = found[0]
-        return cls(sample_dir, kind, zarr.open_group(str(sample_dir / name), mode="r"), sample_id)
+        return cls(sample_dir, kind, zarr.open_group(str(sample_dir / name), mode="r"),
+                   sample_id, session=session)
 
     @classmethod
-    def open_store(cls, store: str | Path, sample_id: str | None = None) -> Sample:
+    def open_store(
+        cls, store: str | Path, sample_id: str | None = None,
+        *, session: LocalReadSession | None = None,
+    ) -> Sample:
         """Open a single zarr store whatever its file name (e.g. ``predictions/<sid>.zarr``);
         the kind comes from the root attribute ``format`` (``frontier-dataset/<kind>``)."""
         import zarr
@@ -1146,9 +1170,74 @@ class Sample:
         if kind not in STORE_NAMES:
             by_name = {v: k for k, v in STORE_NAMES.items()}
             kind = by_name.get(store.name, "grid" if "coords" in group else "mesh")
-        out = cls(store.parent, kind, group, sample_id or store.stem)
+        out = cls(store.parent, kind, group, sample_id or store.stem, session=session)
         out._store = store
         return out
+
+    def __getstate__(self) -> dict:
+        return {**vars(self), "_times": None, "_arrays": {}, "_dims": {},
+                "read_stats": ReadStats()}
+
+    def refresh(self, *, session: LocalReadSession | None = None) -> None:
+        """Reopen after writes finish. Borrowed sessions require a fresh replacement.
+
+        The caller owns shared contexts: after changing immutable inputs, create a
+        new TensorStoreReadGroup too, rather than reusing that group's cached data.
+        """
+        import zarr
+
+        if session is self.read_session or (session is None and not self._owns_session):
+            raise ValueError("Refreshing a borrowed session requires a fresh read session/context")
+        if session is not None:
+            self.read_session = session
+            self._owns_session = False
+        else:
+            self.read_session.clear()
+        self.group = zarr.open_group(store=self.group.store, path=self.group.path, mode="r")
+        self._arrays.clear()
+        self._dims.clear()
+        self._times = None
+        self._meta = None
+        self.read_stats = ReadStats()
+
+    def _reader(self, array: Any):
+        from zarr.storage import LocalStore
+
+        if not isinstance(array.store, LocalStore):
+            raise ValueError("Sample reads require a local or mounted store; use a remote adapter")
+        path = str(array.path)
+        if (not path or path.startswith("/") or "\\" in path or "\0" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))):
+            raise ValueError("Sample array path must stay inside its store")
+        return self.read_session.open(array.store.root, path)
+
+    def _read(self, array: Any, leading: TimeIndex = None) -> np.ndarray:
+        reader = self._reader(array)
+        selection = (slice(None),) * len(reader.backend.spec.shape)
+        try:
+            if leading is None:
+                values = reader.read(selection, stats=self.read_stats)
+            elif isinstance(leading, bool | np.bool_):
+                raise TypeError("Time indices must be integers, not booleans")
+            elif isinstance(leading, int | np.integer | slice):
+                axis = int(leading) if isinstance(leading, int | np.integer) else leading
+                values = reader.read((axis, *selection[1:]), stats=self.read_stats)
+            else:
+                indices = np.asarray(leading)
+                if indices.ndim != 1:
+                    raise ValueError("Time indices must be one-dimensional")
+                if indices.size and indices.dtype.kind not in {"i", "u"}:
+                    raise TypeError("Time indices must be integers")
+                values = self.read_session.read_rows(
+                    array.store.root, str(array.path), indices.tolist(), stats=self.read_stats,
+                )
+        except MemoryError as error:
+            raise MemoryError(
+                "Sample selection exceeds the ArrayRoute read allowance; select fewer steps, "
+                "stream a region with FieldReader, or configure a larger LocalReadSession. "
+                + str(error)
+            ) from error
+        return values if values.flags.writeable else values.copy()
 
     # -- time ------------------------------------------------------------------------------
 
@@ -1164,7 +1253,7 @@ class Sample:
     def times(self) -> np.ndarray | None:
         """``(T,)`` float64 time stamps, ``None`` for a steady sample."""
         if self._times is None and "times" in self.group:
-            self._times = np.asarray(self.group["times"][...], dtype=np.float64)
+            self._times = self._read(self.group["times"]).astype(np.float64, copy=False)
         return self._times
 
     @property
@@ -1284,16 +1373,7 @@ class Sample:
         step without the time axis, a ``slice`` / index list keeps it, ``None`` reads every
         step. ``t`` is ignored for time-independent arrays."""
         arr = self.array(name, location, lod)
-        if t is None or self.dims(name, location, lod)[:1] != ["time"]:
-            return np.asarray(arr[...])
-        if isinstance(t, int | np.integer):
-            return np.asarray(arr[int(t)])
-        if isinstance(t, slice):
-            return np.asarray(arr[t])
-        idx = np.asarray(t, dtype=np.int64)
-        return (
-            np.stack([np.asarray(arr[int(i)]) for i in idx]) if idx.size else np.asarray(arr[0:0])
-        )
+        return self._read(arr, t if self.dims(name, location, lod)[:1] == ["time"] else None)
 
     @property
     def signal_names(self) -> list[str]:
@@ -1304,11 +1384,7 @@ class Sample:
         """A global signal: ``(T, C)`` (``t`` selects steps as in :meth:`field`) or ``(C,)``."""
         signals: Any = self.group["signals"]
         arr = signals[name]
-        if t is None or arr.ndim < 2:
-            return np.asarray(arr[...])
-        if isinstance(t, int | np.integer):
-            return np.asarray(arr[int(t)])
-        return np.asarray(arr[t] if isinstance(t, slice) else arr[...][np.asarray(t)])
+        return self._read(arr, t if arr.ndim >= 2 else None)
 
     @property
     def location(self) -> str:
@@ -1317,19 +1393,37 @@ class Sample:
 
     def static(self, name: str) -> np.ndarray:
         static: Any = self.group["static"]
-        return np.asarray(static[name][...])
+        return self._read(static[name])
 
     def points(self, t: int | None = None, lod: int = 0) -> np.ndarray:
         """Point coordinates ``(N, D)``; with ``t`` and a moving mesh, the positions at step
         ``t``."""
         if self.kind == "grid":
-            cs = self.coords
-            mesh = np.meshgrid(*[cs[a] for a in self.axes], indexing="ij")
-            return np.stack([m.reshape(-1) for m in mesh], axis=1).astype(np.float32)
+            axes = self.axes
+            readers = [self._reader(self.group["coords"][axis]) for axis in axes]
+            shape = tuple(reader.backend.spec.shape[0] for reader in readers)
+            output_bytes = math.prod(shape) * len(axes) * np.dtype(np.float32).itemsize
+            read_bytes = sum(reader.plan((slice(None),)).buffer_bytes_upper_bound
+                             for reader in readers)
+            if output_bytes + read_bytes > self.read_session.buffer_bytes:
+                raise MemoryError("Grid points exceed the ArrayRoute allowance; select a region")
+            pool = self.read_session.read_budget
+            reservation = pool.reserve(output_bytes + read_bytes) if pool else nullcontext()
+            with reservation:
+                result = np.empty((*shape, len(axes)), dtype=np.float32)
+                for index, reader in enumerate(readers):
+                    # The aggregate reservation includes coordinate decoding; do not nest it.
+                    worker = ArrayReader(reader.backend, buffer_bytes=reader.buffer_bytes)
+                    values = worker.read((slice(None),), stats=self.read_stats)
+                    broadcast = [1] * len(axes)
+                    broadcast[index] = shape[index]
+                    result[..., index] = values.reshape(broadcast)
+                    del values
+                return result.reshape(-1, len(axes))
         g = self._sub(lod)
         if t is not None and "points_t" in g:
-            return np.asarray(g["points_t"][int(t)])
-        return np.asarray(g["points"][...])
+            return self._read(g["points_t"], t)
+        return self._read(g["points"])
 
     @property
     def has_moving_points(self) -> bool:
@@ -1338,13 +1432,19 @@ class Sample:
     @property
     def cells(self) -> np.ndarray:
         """``(K, P)`` connectivity padded with -1 (``faces`` for a surface)."""
-        return np.asarray(self.group["faces" if self.kind == "surface" else "cells"][...])
+        return self._read(self.group["faces" if self.kind == "surface" else "cells"])
 
     @property
     def cell_types(self) -> np.ndarray:
         if "cell_types" in self.group:
-            return np.asarray(self.group["cell_types"][...])
-        return np.full(len(self.cells), VTK_TRIANGLE, dtype=np.uint8)
+            return self._read(self.group["cell_types"])
+        key = "faces" if self.kind == "surface" else "cells"
+        count = int(self.group[key].shape[0])
+        if count > self.read_session.buffer_bytes:
+            raise MemoryError("Cell types exceed the ArrayRoute allowance")
+        pool = self.read_session.read_budget
+        with pool.reserve(count) if pool else nullcontext():
+            return np.full(count, VTK_TRIANGLE, dtype=np.uint8)
 
     def triangles(self) -> np.ndarray:
         """Triangulated connectivity ``(M, 3)`` for plotting (quads split in two; cells with
@@ -1370,7 +1470,7 @@ class Sample:
     @property
     def coords(self) -> dict[str, np.ndarray]:
         coords: Any = self.group["coords"]
-        return {a: np.asarray(coords[a][...]) for a in self.axes}
+        return {a: self._read(coords[a]) for a in self.axes}
 
     @property
     def shape(self) -> tuple[int, ...]:
