@@ -100,6 +100,24 @@ research script remains available and does not pass through package discovery.
 This registers models for the trainer. Arbitrary models still need adapters for canvas
 configuration or serving; registering a factory does not generate either adapter.
 
+## Artifact view renderers
+
+Optional `frontier.views` entry points implement the independently versioned `views`
+v1 API. Declare `views = ">=1,<2"` in the manifest's `[api]` table. An entry point
+resolves to a callable accepting immutable artifact bytes and returning a self-contained
+HTML string. Use only bundled assets and escape all input labels. The generic host
+supplies an opaque-origin iframe; renderers cannot depend on network access, parent
+DOM access or account credentials. Installed plugins remain trusted Python code.
+
+`python -m frontier_plugins.views list` reads descriptors and enable/compatibility
+state without importing renderer code. `render --plugin ID --view NAME --source FILE`
+is the operator-side bridge. A network host must authorize access to the source before
+calling it; never pass a client-supplied filesystem path. The Frontier server resolves
+registered run artifacts after project authorization. Requests are bounded and outputs
+include the source SHA-256 so human and agent clients can identify the same evidence.
+This interface provides read-only artifact visualization; execution nodes and commercial
+entitlement checks are separate capabilities.
+
 ## Compatibility policy
 
 - Patch API releases fix behavior without changing supported signatures or schemas.
