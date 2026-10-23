@@ -857,7 +857,7 @@
       "type": "object"
     },
     "LeadConfig": {
-      "description": "Lead time Δ in units of (strided) steps. ``fixed``: always ``max``. ``random``: drawn\nuniformly from 1..``max`` per training pair (\"all2all\" lead-time conditioning, the model is\ntold Δ and can be queried at any of them).",
+      "description": "Lead time \u0394 in units of (strided) steps. ``fixed``: always ``max``. ``random``: drawn\nuniformly from 1..``max`` per training pair (\"all2all\" lead-time conditioning, the model is\ntold \u0394 and can be queried at any of them).",
       "properties": {
         "mode": {
           "default": "fixed",
@@ -1182,11 +1182,12 @@
         },
         "batch_read": {
           "default": "individual",
-          "description": "Read windows separately, deduplicate frames within a minibatch, or also combine adjacent reads. Benchmark on the real layout; batching is not always faster. Keeps sample order and random choices unchanged.",
+          "description": "Read windows separately, deduplicate frames within a minibatch, or also combine adjacent reads. Adaptive combines only overlapping windows. Benchmark on the real layout; batching is not always faster. Keeps sample order and random choices unchanged.",
           "enum": [
             "individual",
             "deduplicate",
-            "coalesce"
+            "coalesce",
+            "adaptive"
           ],
           "title": "Batch Read",
           "type": "string"
@@ -1394,6 +1395,14 @@
           ],
           "default": null,
           "title": "Synthetic"
+        },
+        "batch_read_min_reuse": {
+          "default": 0.25,
+          "description": "Minimum fraction of repeated frames for adaptive batch reads, per trajectory and rank. An overlap heuristic, not a latency guarantee. Zero still requires shared frames; one disables combining finite batches.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Batch Read Min Reuse",
+          "type": "number"
         }
       },
       "required": [
