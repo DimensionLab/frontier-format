@@ -457,3 +457,19 @@ capacity, not compressed network traffic or a disk quota; reserve database/files
 space separately and confirm latency with actual reads. Truncated or failed traces
 are rejected; overlapping calls receive no recommendation. See ArrayRoute's cache
 policy documentation for capture limits and the standalone comparison command.
+
+### Comparing large dataset revisions
+
+Version differences now scan arrays through ArrayRoute rather than loading both revisions
+into memory. Change counts and error metrics cover every element; percentile estimates have
+an explicit sample count and scope in JSON output. Select the reader and allowance with:
+
+```bash
+python -m frontier_data versions diff my-dataset --a HEAD~1 --b HEAD \
+  --read-engine zarr-python --read-buffer-mib 64 --percentile-samples 65536 --json
+```
+
+`VersionStore.diff()` exposes `read_engine`, `read_buffer_bytes` and `percentile_samples`.
+The old `max_elements` argument has been replaced by `percentile_samples`, clarifying that
+it never limits exact change counts. Version materialization still visits the referenced
+files, so this is a bounded numerical scan, not a constant-time metadata comparison.

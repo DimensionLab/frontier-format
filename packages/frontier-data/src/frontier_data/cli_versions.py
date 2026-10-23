@@ -149,11 +149,21 @@ def diff_cmd(
     dataset: DatasetArg,
     a: Annotated[str, typer.Option(help="Compare from this version")] = "HEAD~1",
     b: Annotated[str, typer.Option(help="Compare to this version")] = "HEAD",
-    arrays: Annotated[bool, typer.Option(help="Compute array statistics")] = True,
+    arrays: Annotated[bool, typer.Option(help="Scan full arrays for exact change counts")] = True,
+    percentile_samples: Annotated[int, typer.Option(
+        min=1, max=4_000_000, help="Deterministic sample limit for percentiles only",
+    )] = 65536,
+    read_engine: Annotated[str, typer.Option(
+        help="zarr-python, tensorstore or zarrista",
+    )] = "zarr-python",
+    read_buffer_mib: Annotated[int, typer.Option(min=1, help="Read-buffer allowance in MiB")] = 128,
     as_json: JsonOpt = False,
 ) -> None:
     """Show what changed between two versions"""
-    d = VersionStore(dataset).diff(a, b, arrays=arrays)
+    d = VersionStore(dataset).diff(
+        a, b, arrays=arrays, percentile_samples=percentile_samples,
+        read_engine=read_engine, read_buffer_bytes=read_buffer_mib << 20,
+    )
     if as_json:
         _print(d, True)
         return

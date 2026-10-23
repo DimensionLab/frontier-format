@@ -88,7 +88,10 @@ def test_customer_range_policy_exports_exact_sharded_field_and_records_limits(tm
 
 @pytest.mark.parametrize("engine", ["zarr-python", "tensorstore", "zarrista"])
 @pytest.mark.parametrize("strategy", ["native", "dense"])
-def test_cli_measures_customer_regions_with_units_and_verified_reads(tmp_path, engine, strategy):
+@pytest.mark.parametrize("color", [False, True])
+def test_cli_measures_customer_regions_with_units_and_verified_reads(
+    tmp_path, engine, strategy, color,
+):
     import json
 
     from typer.testing import CliRunner
@@ -113,8 +116,10 @@ def test_cli_measures_customer_regions_with_units_and_verified_reads(tmp_path, e
     assert len(report["reference_sha256"]) == 3 and len(report["trials"]) == 2
     assert report["planned_output_bytes"] == 3 * 3 * 8 * 8 * 3 * 4
     assert all(trial["verified"] for trial in report["trials"])
-    refused = CliRunner().invoke(app, [*args, "--select", "time=1"])
-    assert refused.exit_code != 0 and "Choose --vary" in refused.output
+    from click import unstyle
+
+    refused = CliRunner().invoke(app, [*args, "--select", "time=1"], color=color)
+    assert refused.exit_code != 0 and "Choose --vary" in unstyle(refused.output)
 
 
 def test_cli_concurrency_plan_reads_metadata_only(tmp_path, monkeypatch):

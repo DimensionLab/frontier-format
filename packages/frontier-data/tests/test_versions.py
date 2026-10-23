@@ -270,3 +270,40 @@ def test_revert_without_any_gate_tag_says_no_version_carries_it(ds: Path) -> Non
     assert not out["train_ready"] and out["tagged"] is None
     assert "no version carries the tag" in out["hint"] and "prep.quality.gate" in out["hint"]
     assert "train-ready" not in vs.tags()
+
+
+@pytest.mark.parametrize('engine', ['zarr-python', 'tensorstore', 'zarrista'])
+def test_diff_full_change_counts_with_small_percentile_sample(ds, engine):
+    vs = VersionStore(ds)
+    before = vs.init()
+    _scale_field(ds, 'case_1', 3.)
+    after = vs.commit('scale')
+    result = vs.diff(before.id, after.id, percentile_samples=2, read_engine=engine)
+    arrays = result['samples']['modified']['case_1']['arrays']
+    assert 'mesh.zarr/fields' not in arrays
+    result = arrays['mesh.zarr/fields/p']
+    assert result['n_changed'] == 200
+    assert result['comparison_scope'] == 'full_array'
+    assert result['before']['percentile_scope'] == 'deterministic_sample'
+    assert result['before']['percentile_sample_count'] == 2
+    assert result['rel_l2_diff'] == pytest.approx(2., rel=1e-6)
+
+
+def test_diff_cli_declares_percentile_sampling(ds):
+    from typer.testing import CliRunner
+
+    from frontier_data.cli_versions import versions_app
+
+    vs = VersionStore(ds)
+    before = vs.init()
+    _scale_field(ds, 'case_1', 2.)
+    vs.commit('scale')
+    result = CliRunner().invoke(versions_app, ['diff', str(ds), '--a', before.id,
+                               '--percentile-samples', '2', '--read-buffer-mib', '2', '--json'])
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    field = output['samples']['modified']['case_1']['arrays']['mesh.zarr/fields/p']
+    assert field['n_changed'] == 200
+    assert field['before']['percentile_scope'] == 'deterministic_sample'
+    invalid = CliRunner().invoke(versions_app, ['diff', str(ds), '--percentile-samples', '0'])
+    assert invalid.exit_code != 0

@@ -43,6 +43,9 @@ from typing import Any
 
 import numpy as np
 
+from arrayroute.reader import ArrayReader
+from arrayroute.session import LocalReadSession
+
 log = logging.getLogger(__name__)
 
 STORE_DIR = ".frontier"
@@ -50,7 +53,7 @@ IGNORED_NAMES = {".DS_Store", "Thumbs.db", STORE_DIR}
 HASH_BLOCK = 4 << 20
 #: paths under a sample directory are stored in a per-sample subtree
 SAMPLES_DIR = "samples"
-DIFF_MAX_ELEMENTS = 4_000_000
+DIFF_PERCENTILE_SAMPLES = 65536
 
 ProgressFn = Callable[[int, int, str], None]
 
@@ -880,9 +883,20 @@ class VersionStore:
         b: str = "HEAD",
         *,
         arrays: bool = True,
-        max_elements: int = DIFF_MAX_ELEMENTS,
+        percentile_samples: int = DIFF_PERCENTILE_SAMPLES,
+        read_engine: str = "zarr-python",
+        read_buffer_bytes: int = 128 << 20,
     ) -> dict[str, Any]:
-        """Structural + statistical diff between two versions (section 5 of the spec)."""
+        """Structural and full-array statistical diff, with bounded numerical reads.
+
+        ``percentile_samples`` limits the deterministic percentile sample, not the exact
+        changed count or finite-pair error metrics. Immutable version materialization
+        still visits referenced files; this is not a constant-time metadata operation.
+        """
+        if (isinstance(percentile_samples, bool) or not isinstance(percentile_samples, int)
+                or not 1 <= percentile_samples <= 4_000_000):
+            raise ValueError("percentile_samples must be an integer in [1, 4000000]")
+        session = LocalReadSession(read_engine, buffer_bytes=read_buffer_bytes)
         va, vb = self.version(a), self.version(b)
         ta, tb = self.flatten(va), self.flatten(vb)
         added = sorted(p for p in tb if p not in ta)
@@ -922,7 +936,8 @@ class VersionStore:
                         entry[name.split(".")[0]] = {"added": True}
                 if arrays:
                     entry["arrays"] = _diff_sample_arrays(
-                        da / SAMPLES_DIR / sid, db / SAMPLES_DIR / sid, sub_a, sub_b, max_elements
+                        da / SAMPLES_DIR / sid, db / SAMPLES_DIR / sid, sub_a, sub_b,
+                        percentile_samples, session
                     )
                 out["samples"]["modified"][sid] = entry
         out["scalars"] = _scalar_summary(out["samples"]["modified"])
@@ -1141,16 +1156,6 @@ def _subsample(a: np.ndarray, max_elements: int) -> np.ndarray:
     return flat[idx]
 
 
-def _read_array(path: Path) -> np.ndarray | None:
-    import zarr
-
-    try:
-        arr = zarr.open_array(str(path), mode="r")
-    except Exception:
-        return None
-    return np.asarray(arr[...])
-
-
 def compare_arrays(a: np.ndarray | None, b: np.ndarray | None, max_elements: int) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if a is None and b is None:
@@ -1192,7 +1197,8 @@ def compare_arrays(a: np.ndarray | None, b: np.ndarray | None, max_elements: int
 
 
 def _diff_sample_arrays(
-    da: Path, db: Path, sub_a: dict[str, list], sub_b: dict[str, list], max_elements: int
+    da: Path, db: Path, sub_a: dict[str, list], sub_b: dict[str, list],
+    percentile_samples: int, session: LocalReadSession,
 ) -> dict[str, Any]:
     arrays_a, arrays_b = _array_dirs(sub_a), _array_dirs(sub_b)
     changed: set[str] = set()
@@ -1207,11 +1213,26 @@ def _diff_sample_arrays(
             if d in arrays_a or d in arrays_b:
                 changed.add(d)
                 break
+    from arrayroute.difference import compare_array_readers
+
+    def open_array(
+        base: Path, directory: str, present: dict[str, str],
+    ) -> ArrayReader | None:
+        if directory not in present:
+            return None
+        metadata = json.loads((base / directory / "zarr.json").read_text())
+        if metadata.get("node_type") == "group":
+            return None
+        store = present[directory]
+        key = directory[len(store) + 1:]
+        return session.open(base / store, key)
+
     out: dict[str, Any] = {}
     for d in sorted(changed):
-        a = _read_array(da / d) if d in arrays_a else None
-        b = _read_array(db / d) if d in arrays_b else None
-        out[d] = compare_arrays(a, b, max_elements)
+        a = open_array(da, d, arrays_a)
+        b = open_array(db, d, arrays_b)
+        if a is not None or b is not None:
+            out[d] = compare_array_readers(a, b, percentile_samples=percentile_samples)
     return out
 
 
