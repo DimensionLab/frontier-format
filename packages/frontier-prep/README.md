@@ -68,6 +68,34 @@ Op ids are `prep.<category>.<name>`, for example `prep.fields.map`. To add an op
 `frontier_prep.base.BaseOp`, register it with `@register` and publish it under the entry-point
 group `frontier.ops`.
 
+## Preview comparisons through ArrayRoute
+
+Preparation contract 2.0 uses ArrayRoute for statistical comparisons, including geometry,
+fields, masks, signals and time arrays. Change counts and extrema cover **every value in
+the selected time window**, rather than extrapolating from a few points. Percentiles alone
+use a deterministic sample; their scope and sample count are included in the result.
+`Selection.percentile_samples` replaces the old, misleading `max_points` setting.
+
+```python
+preview = op.preview("my-dataset", params, sample=Selection(
+    max_samples=2, max_steps=8, percentile_samples=65536,
+    read_engine="tensorstore", read_buffer_bytes=32 << 20,
+))
+```
+
+The CLI exposes `--max-steps`, `--percentile-samples`, `--read-engine` and
+`--read-buffer-mib`. Install `frontier-data[readers]` for the optional engines.
+Results retain source shapes, exact selections, separate numerical/bitwise change counts,
+units and read statistics. A unit conversion reports before/after values in their own
+units and suppresses physical deltas between different units. Missing units remain explicit.
+
+Comparison buffers are bounded independently per source; codec scratch and engine caches
+are additional. Transform execution, rendering, scratch-directory metadata and the result
+list have separate costs. The time limit is cooperative between comparison reads and
+reductions and cannot interrupt a blocked native read or a transformation. An interrupted
+or failed comparison marks the preview incomplete and includes a reason; partial counts
+are never returned as complete. Source metadata/data must remain fixed during comparison.
+
 ## Optional CUDA surface smoothing
 
 `prep.mesh.taubin` smooths static triangle surfaces while retaining connectivity and field

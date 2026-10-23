@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
+  "arrayroute>=0.1.36,<0.2",
   "frontier-plugins>=1,<2",
   "frontier-data>=0.9.3,<0.10.0",
   "numpy>=1.26",

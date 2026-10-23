@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 #: entry-point group third-party packages use to publish ops
 ENTRY_POINT_GROUP = "frontier.ops"
 #: contract version carried by every Plan / Result / tool schema
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "2.0"
 
 Determinism = Literal["bitwise", "tolerance", "seeded"]
 Severity = Literal["info", "warn", "fail"]
@@ -55,8 +55,11 @@ class Params(BaseModel):
 
 
 class Selection(BaseModel):
-    """What a ``preview`` looks at. Bounded by construction: at most ``max_samples`` samples,
-    at most ``max_steps`` time steps and ``max_points`` entities per array."""
+    """Preview scope and comparison resources. Transform/render work has its own costs.
+
+    Comparisons scan all spatial values in at most ``max_steps`` time steps per array.
+    Only percentiles are sampled. The wall-clock limit is cooperative, between reads.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -65,9 +68,12 @@ class Selection(BaseModel):
     )
     max_samples: int = Field(default=3, ge=1, le=64)
     max_steps: int = Field(default=8, ge=1, le=512, description="Time steps per sample.")
-    max_points: int = Field(
-        default=200_000, ge=1000, description="Entities per array read for statistics."
+    percentile_samples: int = Field(
+        default=65_536, ge=1, le=1_000_000,
+        description="Deterministic percentile sample count; change counts scan all selected values."
     )
+    read_engine: Literal["zarr-python", "tensorstore", "zarrista"] = "zarr-python"
+    read_buffer_bytes: int = Field(default=128 << 20, ge=1)
     time_budget_s: float = Field(default=20.0, gt=0, description="Soft wall-clock bound.")
     renders: bool = Field(default=True, description="Produce thumbnails (SVG/PNG).")
 
@@ -159,11 +165,24 @@ class FieldDiff(BaseModel):
     n_before: int | None = None
     n_after: int | None = None
     n_changed: int | None = None
+    n_bitwise_changed: int | None = None
     frac_changed: float | None = None
     max_abs_diff: float | None = None
     rel_l2_diff: float | None = None
-    before: dict[str, float] | None = None  # min / max / mean / std / p01 / p99 / nan_frac
-    after: dict[str, float] | None = None
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
+    comparison_scope: Literal["full_array", "full_selection"] = "full_array"
+    selection_before: list[Any] | None = None
+    selection_after: list[Any] | None = None
+    source_shape_before: list[int] | None = None
+    source_shape_after: list[int] | None = None
+    units_before: str | None = None
+    units_after: str | None = None
+    difference_units: str | None = None
+    algorithm: str | None = None
+    metric_precision: str | None = None
+    read_before: dict[str, Any] | None = None
+    read_after: dict[str, Any] | None = None
     note: str | None = None
 
 

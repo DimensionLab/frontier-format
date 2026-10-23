@@ -81,7 +81,12 @@ truncated, notes[]}` where `FieldDiff` = `{target, n_before, n_after, n_changed,
 max_abs_diff, rel_l2_diff, before{min,max,mean,std,p01,p99,nan_frac}, after{…}, note}` and
 `Render` = `{kind: "svg"|"png", caption, data (SVG text or base64 PNG), target, width, height}`.
 A preview is bounded by `Selection` = `{samples[], max_samples=3, max_steps=8,
-max_points=200000, time_budget_s=20, renders=true}`; `truncated` says the budget hit.
+percentile_samples=65536, read_engine="zarr-python", read_buffer_bytes=134217728,
+time_budget_s=20, renders=true}`. Contract 2.0 replaces `max_points`: change counts and
+extrema scan all selected values; only percentiles are sampled. Diffs retain numerical and
+bitwise counts, source shapes, exact selections, units and the algorithm identifier.
+`truncated` marks an interrupted or failed preview, with its reason in `notes`. The comparison
+deadline is cooperative; operation execution and rendering have separate resource costs.
 
 `Result` = `{contract, op, op_version, params, dataset, input_version, output_version,
 changes[], assertions[Assertion], warnings[], determinism, tolerance, content_hashes{target:
@@ -210,9 +215,12 @@ never rewritten; a server signs them when connected and merges offline logs on s
  "scalars":{"parameters":{"Re":{"changed":3}}}}
 ```
 
-Array statistics are computed on the materialised arrays of both versions (hardlink checkout
-to a temporary directory; nothing is copied); above `max_points` a fixed, seeded subset is used
-and reported.
+Array statistics use bounded ArrayRoute reads of both versions (hardlink checkout to a
+temporary directory, or file copies if hardlinks are unavailable). Counts and extrema scan
+the full arrays; only percentiles use deterministic sampled positions. Preparation previews
+may restrict time steps and retain their exact selection rather than claiming full-trajectory
+coverage. Different source units suppress physical delta metrics instead of subtracting
+incompatible quantities. Float reductions use fixed-order blocks with a pinned NumPy/runtime.
 
 ## 6. Recipes
 

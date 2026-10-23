@@ -219,6 +219,14 @@ def preview_cmd(
         str | None, typer.Option(help="Preview these sample ids, comma separated")
     ] = None,
     max_samples: Annotated[int, typer.Option(help="Preview at most this many samples")] = 3,
+    max_steps: Annotated[int, typer.Option(help="Compare at most this many time steps")] = 8,
+    percentile_samples: Annotated[int, typer.Option(help="Samples for percentiles only")] = 65_536,
+    read_engine: Annotated[
+        str, typer.Option(help="zarr-python, tensorstore or zarrista")
+    ] = "zarr-python",
+    read_buffer_mib: Annotated[
+        int, typer.Option(help="Comparison read allowance per array (MiB)")
+    ] = 128,
     renders: Annotated[bool, typer.Option(help="Render before and after images")] = True,
     render_dir: Annotated[
         Path | None, typer.Option(help="Write the renders (svg, png) to this directory")
@@ -227,9 +235,11 @@ def preview_cmd(
 ) -> None:
     """Apply an op to a few samples in a temporary copy and show the differences"""
     op, p = _op_and_params(op_id, params, sets)
-    sel = Selection(
-        samples=samples.split(",") if samples else None, max_samples=max_samples, renders=renders
-    )
+    sel = Selection.model_validate({
+        "samples": samples.split(",") if samples else None, "max_samples": max_samples,
+        "max_steps": max_steps, "renders": renders, "percentile_samples": percentile_samples,
+        "read_engine": read_engine, "read_buffer_bytes": read_buffer_mib << 20,
+    })
     pv = op.preview(dataset, p, sample=sel)
     if render_dir is not None:
         render_dir.mkdir(parents=True, exist_ok=True)
@@ -255,9 +265,13 @@ def preview_cmd(
         else:
             line += f"changed {d.frac_changed or 0:.1%}"
             if d.max_abs_diff is not None:
-                line += f", max|d| {d.max_abs_diff:.4g}"
-            if d.before and d.after and "mean" in d.before and "mean" in d.after:
-                line += f", mean {d.before['mean']:.4g} -> {d.after['mean']:.4g}"
+                line += (f", max|d| {d.max_abs_diff:.4g} "
+                         f"{d.difference_units or '(units unspecified)'}")
+        if d.before and d.after and "mean" in d.before and "mean" in d.after:
+            line += (f", mean {d.before['mean']:.4g} {d.units_before or '(units unspecified)'}"
+                     f" -> {d.after['mean']:.4g} {d.units_after or '(units unspecified)'}")
+        if d.comparison_scope == "full_selection":
+            line += " (selected time window; all spatial values)"
         console.print(line)
     for n in pv.notes:
         console.print(f"[yellow]note[/] {n}")

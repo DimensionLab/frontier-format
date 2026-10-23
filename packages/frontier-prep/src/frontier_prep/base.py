@@ -36,11 +36,10 @@ from multiprocessing import get_context
 from pathlib import Path
 from typing import Any, ClassVar
 
-import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
 from frontier_data.dataset import Dataset, Manifest
-from frontier_data.versions import VersionStore, compare_arrays
+from frontier_data.versions import VersionStore
 from frontier_prep import kernels
 from frontier_prep.io import SampleEditor, read_manifest, save_manifest, sync_manifest_fields
 from frontier_prep.op import (
@@ -64,6 +63,7 @@ from frontier_prep.op import (
     Timing,
     now_iso,
 )
+from frontier_prep.preview import compare_changes
 
 log = logging.getLogger(__name__)
 
@@ -262,6 +262,7 @@ class BaseOp:
                 try:
                     out = self.apply_sample(after, p, seed=0)
                 except Exception as exc:  # noqa: BLE001 - previews report, never raise
+                    truncated = True
                     notes.append(f"{sid}: {type(exc).__name__}: {exc}")
                     continue
                 try:
@@ -271,7 +272,17 @@ class BaseOp:
                 if note:
                     notes.append(f"{sid}: {note}")
                 outcomes.append(out)
-                diffs += _diff_changes(before, after, out.changes, sel)
+                try:
+                    diffs += compare_changes(
+                        before, after, out.changes, sel, cancelled=lambda: t() > sel.time_budget_s
+                    )
+                except InterruptedError:
+                    truncated = True
+                    notes.append(f"time budget {sel.time_budget_s}s hit during {sid} comparison")
+                    break
+                except Exception as exc:  # noqa: BLE001 - report a failed preview, never success
+                    truncated = True
+                    notes.append(f"{sid}: comparison failed: {type(exc).__name__}: {exc}")
                 stats[sid] = out.stats
                 if sel.renders:
                     try:
@@ -703,66 +714,3 @@ def _link_tree(src: Path, dst: Path) -> None:
                 os.link(p, dst / rel)
             except OSError:
                 shutil.copyfile(p, dst / rel)
-
-
-def _diff_changes(
-    before: SampleEditor, after: SampleEditor, changes: list[Change], sel: Selection
-) -> list[FieldDiff]:
-    """Statistical diffs for every array a change names (``…/fields/<name>``, ``…/points``)."""
-    out: list[FieldDiff] = []
-    seen: set[str] = set()
-    for ch in changes:
-        target = ch.target
-        rel = target.split(f"samples/{before.id}/", 1)[-1] if "samples/" in target else target
-        if rel in seen or ch.action == "assert":
-            continue
-        seen.add(rel)
-        a = _read_target(before, rel, sel) if ch.action != "add" else None
-        b = _read_target(after, rel, sel) if ch.action != "remove" else None
-        if a is None and b is None:
-            continue
-        st = compare_arrays(a, b, sel.max_points)
-        out.append(
-            FieldDiff(
-                target=target,
-                n_before=st.get("n_before"),
-                n_after=st.get("n_after"),
-                n_changed=st.get("n_changed"),
-                frac_changed=st.get("frac_changed"),
-                max_abs_diff=st.get("max_abs_diff"),
-                rel_l2_diff=st.get("rel_l2_diff"),
-                before=_floats(st.get("before")),
-                after=_floats(st.get("after")),
-                note=st.get("note"),
-            )
-        )
-    return out
-
-
-def _floats(d: Any) -> dict[str, float] | None:
-    if not isinstance(d, dict):
-        return None
-    return {k: float(v) for k, v in d.items() if isinstance(v, int | float)}
-
-
-def _read_target(ed: SampleEditor, rel: str, sel: Selection) -> np.ndarray | None:
-    """Read ``fields/<name>``, ``cell_fields/<name>``, ``points``, ``times``, ... bounded by
-    ``sel.max_steps`` time steps."""
-    try:
-        s = ed.reopen()
-        if rel.startswith(("fields/", "cell_fields/", "static/")):
-            group, name = rel.split("/", 1)
-            if group == "static":
-                return s.static(name)
-            loc = "cell" if group == "cell_fields" else None
-            if s.is_time_dependent(name, loc):
-                return s.field(name, slice(0, sel.max_steps), location=loc)
-            return s.field(name, location=loc)
-        if rel in ("points", "faces", "cells", "times", "cell_area", "cell_types"):
-            g: Any = s.group
-            return np.asarray(g[rel][...]) if rel in g else None
-        if rel.startswith("signals/"):
-            return s.signal(rel.split("/", 1)[1])
-    except (KeyError, FileNotFoundError):
-        return None
-    return None
