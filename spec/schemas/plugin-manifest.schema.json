@@ -19,7 +19,8 @@
         "host",
         "importer",
         "model",
-        "operation"
+        "operation",
+        "profiler"
       ]
     },
     "name": {

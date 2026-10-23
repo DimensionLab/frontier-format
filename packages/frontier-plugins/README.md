@@ -43,11 +43,17 @@ expanding dependency ranges; private imports do not become stable public interfa
 | `converters` | `frontier_hub.converters`  |
 | `hosts`      | `frontier_deploy.hosts`    |
 | `models`     | `frontier_train.models`    |
+| `profilers`  | `frontier.profilers`       |
 
 These interfaces currently expose API `1.0.0`. Declare every interface the plugin
 requires or provides under `[api]`, using PEP 440 version ranges. Unknown required
 interfaces and unsatisfied ranges prevent loading. Existing plugins without API
 metadata remain usable through the legacy v1 interface, with a compatibility warning.
+
+The `profilers` v1 interface exposes a `TraceSession(Path)` class with `info`,
+`events`, `event`, `summary`, `compare` and `close` methods. It is an analysis
+interface, not a native canvas node or capture-control contract. Optional packages
+must be loaded through the compatibility helper and retained outside hot loops.
 
 ## Model registration modules
 
