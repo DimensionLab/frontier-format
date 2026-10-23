@@ -1425,6 +1425,34 @@ class Sample:
             return self._read(g["points_t"], t)
         return self._read(g["points"])
 
+    def surface(self, lod: int = 0, *, fields: bool = True) -> SurfaceMesh:
+        """Materialize a prepared surface with the existing steady-field contract.
+
+        Each array read is bounded; the returned mesh retains all selected arrays.
+        Transient fields require an explicit time selection via field(), and are
+        omitted here as in the legacy surface helper.
+        """
+        if self.kind != "surface":
+            raise ValueError("SurfaceMesh materialization requires a surface sample")
+        group = self._sub(lod)
+        point_fields: dict[str, np.ndarray] = {}
+        cell_fields: dict[str, np.ndarray] = {}
+        if fields:
+            for key, target in (("fields", point_fields), ("cell_fields", cell_fields)):
+                if key in group:
+                    for name in sorted(group[key].array_keys()):
+                        array = group[key][name]
+                        if array.ndim <= 2:
+                            target[str(name)] = self._read(array)
+        return SurfaceMesh(
+            points=np.asarray(self._read(group["points"]), dtype=np.float32),
+            faces=np.asarray(self._read(group["faces"]), dtype=np.int32),
+            point_fields=point_fields,
+            cell_fields=cell_fields,
+            cell_area=(np.asarray(self._read(group["cell_area"]), dtype=np.float32)
+                       if "cell_area" in group else None),
+        )
+
     @property
     def has_moving_points(self) -> bool:
         return "points_t" in self.group

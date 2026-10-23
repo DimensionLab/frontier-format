@@ -62,7 +62,9 @@ assert validate_dataset("my-dataset").ok
 
 ## Read sessions and memory limits
 
-Sample fields, signals, times and geometry use ArrayRoute. The default local session uses
+Sample fields, signals, times and geometry use ArrayRoute. `read_surface(...)` and
+`Dataset.surface(...)` also accept `session=...`; their allowance applies per array, while
+the returned mesh retains all selected arrays. The default local session uses
 Zarr-Python with a 128 MiB read-buffer allowance. Choose an explicit allowance or optional
 reader engine when needed:
 

@@ -271,33 +271,14 @@ def write_surface(path: Path, lods: dict[int, SurfaceMesh]) -> None:
     root.attrs["temporal"] = "steady"
 
 
-def _read_mesh_group(group: Any, *, fields: bool = True) -> SurfaceMesh:
-    points = np.asarray(group["points"][...], dtype=np.float32)
-    faces = np.asarray(group["faces"][...], dtype=np.int32)
-    cell_area = (
-        np.asarray(group["cell_area"][...], dtype=np.float32) if "cell_area" in group else None
-    )
-    pf: dict[str, np.ndarray] = {}
-    cf: dict[str, np.ndarray] = {}
-    if fields:
-        if "fields" in group:
-            fg = group["fields"]
-            pf = {str(k): np.asarray(fg[k][...]) for k in fg.array_keys() if fg[k].ndim <= 2}
-        if "cell_fields" in group:
-            cg = group["cell_fields"]
-            cf = {str(k): np.asarray(cg[k][...]) for k in cg.array_keys() if cg[k].ndim <= 2}
-    return SurfaceMesh(
-        points=points, faces=faces, point_fields=pf, cell_fields=cf, cell_area=cell_area
-    )
+def read_surface(
+    path: Path, lod: int = 0, *, fields: bool = True,
+    session: LocalReadSession | None = None,
+) -> SurfaceMesh:
+    """Read a prepared surface through a bounded, worker-local ArrayRoute session."""
+    from frontier_data.arrays import Sample
 
-
-def read_surface(path: Path, lod: int = 0, *, fields: bool = True) -> SurfaceMesh:
-    import zarr
-
-    root = zarr.open_group(str(path), mode="r")
-    lod_group: Any = root["lod"] if lod != 0 else None
-    group = root if lod == 0 else lod_group[str(lod)]
-    return _read_mesh_group(group, fields=fields)
+    return Sample.open_store(path, session=session).surface(lod=lod, fields=fields)
 
 
 def surface_lod_levels(path: Path) -> list[int]:
@@ -617,8 +598,13 @@ class Dataset:
     def is_transient(self) -> bool:
         return self.manifest.temporal == "transient"
 
-    def surface(self, sample_id: str, lod: int = 0, *, fields: bool = True) -> SurfaceMesh:
-        return read_surface(self.sample_dir(sample_id) / "surface.zarr", lod, fields=fields)
+    def surface(
+        self, sample_id: str, lod: int = 0, *, fields: bool = True,
+        session: LocalReadSession | None = None,
+    ) -> SurfaceMesh:
+        return read_surface(
+            self.sample_dir(sample_id) / "surface.zarr", lod, fields=fields, session=session,
+        )
 
     def lod_levels(self, sample_id: str) -> list[int]:
         return self.entry(sample_id).lod_levels

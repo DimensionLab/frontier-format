@@ -163,3 +163,63 @@ def test_refresh_reopens_changed_array_shape(dataset, engine):
     sample.refresh(session=LocalReadSession(engine, tensorstore_threads=2))
     assert sample.attrs['revision_note'] == 'updated'
     assert sample.signal('force', -1).tolist() == [8, 9, 10]
+
+
+@pytest.mark.parametrize('engine', ['zarr-python', 'tensorstore', 'zarrista'])
+def test_surface_helpers_use_selected_session_and_exact_lod(tmp_path, engine, monkeypatch):
+    from frontier_data.dataset import read_surface, write_surface
+    from frontier_data.mesh import SurfaceMesh
+
+    points = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], np.float32)
+    faces = np.array([[0, 1, 2], [1, 3, 2]], np.int32)
+    full = SurfaceMesh(points, faces, point_fields={'p': np.arange(4, dtype=np.float32)},
+                       cell_fields={'stress': np.array([[-0.0], [np.nan]], np.float32)},
+                       cell_area=np.array([.5, .5], np.float32))
+    coarse = SurfaceMesh(points[:3], faces[:1], point_fields={'p': np.ones(3, np.float32)},
+                         cell_fields={'stress': np.zeros(1, np.float32)})
+    writer = DatasetWriter(tmp_path, 'surfaces')
+    from frontier_data.dataset import MeshStats, SampleMeta
+    writer.write_sample('car', {0: full, 2: coarse},
+                        SampleMeta(id='car', dataset='surfaces', mesh=MeshStats(
+                            n_points=4, n_faces=2, bounds=[0, 1, 0, 1, 0, 0], area=1.0)), {})
+    writer.finalize()
+    dataset = Dataset(tmp_path)
+    path = dataset.sample_dir('car') / 'surface.zarr'
+    custom = tmp_path / 'custom.zarr'
+    write_surface(custom, {0: full, 2: coarse})
+    session = LocalReadSession(engine, tensorstore_threads=2)
+    opened = []
+    original_open = session.open
+    def track(store, key):
+        opened.append(key)
+        return original_open(store, key)
+    monkeypatch.setattr(session, 'open', track)
+    for actual in [read_surface(custom, session=session),
+                   dataset.surface('car', session=session)]:
+        exact(actual.points, full.points)
+        exact(actual.faces, full.faces)
+        exact(actual.point_fields['p'], full.point_fields['p'])
+        exact(actual.cell_fields['stress'], full.cell_fields['stress'])
+        exact(actual.cell_area, full.cell_area)
+    assert {'points', 'faces', 'cell_area', 'fields/p', 'cell_fields/stress'} <= set(opened)
+    opened.clear()
+    result = read_surface(path, lod=2, fields=False, session=session)
+    exact(result.points, coarse.points)
+    exact(result.faces, coarse.faces)
+    assert result.point_fields == result.cell_fields == {}
+    assert all(key.startswith('lod/2/') for key in opened)
+    assert all('/fields/' not in key and '/cell_fields/' not in key for key in opened)
+    with pytest.raises(KeyError):
+        read_surface(path, lod=3, session=session)
+    rejected = LocalReadSession(engine, buffer_bytes=1, tensorstore_threads=2)
+    def no_payload(*args, **kwargs):
+        pytest.fail('Oversized surface read reached the backend')
+    reader = rejected.open(path, 'points')
+    monkeypatch.setattr(reader.backend, 'read', no_payload)
+    with pytest.raises(MemoryError, match='read allowance'):
+        read_surface(path, fields=False, session=rejected)
+
+
+def test_surface_helper_rejects_non_surface(dataset):
+    with pytest.raises(ValueError, match='surface sample'):
+        dataset.sample('grid').surface()
