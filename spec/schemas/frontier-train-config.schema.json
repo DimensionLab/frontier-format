@@ -766,7 +766,8 @@
           "type": "boolean"
         },
         "deterministic": {
-          "default": false,
+          "default": true,
+          "description": "Require deterministic PyTorch operations; unsupported operations fail. Exact replay requires the same inputs, ordering, software and hardware. False explicitly permits nondeterministic execution.",
           "title": "Deterministic",
           "type": "boolean"
         },
