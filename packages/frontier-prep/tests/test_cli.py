@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -39,3 +40,21 @@ def test_wrong_param_key_names_the_valid_ones(tmp_path: Path) -> None:
         app, ["plan", "prep.fields.rename", "-d", str(root), "-p", '{"map": {"pMean": "p"}}']
     )
     assert ok.exit_code == 0, _out(ok)
+
+
+def test_recipe_persists_success_and_failure_results(tmp_path: Path) -> None:
+    dataset = tmp_path / "naming"
+    make_case("naming", dataset)
+    recipe = tmp_path / "recipe.json"
+    result = tmp_path / "result.json"
+    for params, expected_ok in [({"map": {"pMean": "p"}}, True), ({"invalid": 1}, False)]:
+        recipe.write_text(json.dumps({"name": "rename", "steps": [
+            {"op": "prep.fields.rename", "params": params},
+        ]}))
+        response = runner.invoke(app, ["recipe", "run", str(recipe), "-d", str(dataset),
+                                       "--result-file", str(result), "--json"])
+        assert response.exit_code == (0 if expected_ok else 2), _out(response)
+        report = json.loads(result.read_text())
+        assert report == json.loads(response.stdout)
+        assert report["ok"] is expected_ok
+        assert report["steps"][0]["status"] == ("ok" if expected_ok else "failed")

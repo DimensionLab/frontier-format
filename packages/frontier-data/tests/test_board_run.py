@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from frontier_data.board_run import EVENT_PREFIX, is_board_document, one_line, run_board
 
 
@@ -42,6 +44,26 @@ def _doc(out: Path, steps: dict[str, Any] | None = None, **train: Any) -> dict[s
             "steps": steps or {},
         },
     }
+
+
+@pytest.mark.parametrize("valid", [True, False])
+def test_recipe_runs_through_preparation_cli_and_retains_result(
+    tmp_path: Path, capfd: Any, valid: bool,
+) -> None:
+    doc = _doc(tmp_path)
+    params = {"map": {"p": "pressure"}} if valid else {"invalid_parameter": 1}
+    doc["nodes"] = doc["nodes"][:3] + [{
+        "id": "prepare", "kind": "recipe", "inputs": ["sink"],
+        "params": {"text": json.dumps({"name": "rename", "steps": [
+            {"op": "prep.fields.rename", "params": params},
+        ]})},
+    }]
+    assert run_board(doc, workers=1) is valid
+    events = _events(capfd.readouterr().out)
+    result = json.loads((tmp_path / "work/prepare/result.json").read_text())
+    assert result["ok"] is valid
+    assert result["steps"][0]["status"] == ("ok" if valid else "failed")
+    assert _states(events, "prepare") == ["running", "succeeded" if valid else "failed"]
 
 
 def test_steps_report_running_progress_and_outputs_and_a_failure_skips_what_follows(

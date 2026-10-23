@@ -384,6 +384,10 @@ def recipe_run(
     workers: Annotated[int, typer.Option(help="Set the number of worker processes")] = 1,
     seed: Annotated[int, typer.Option(help="Set the random seed")] = 0,
     as_json: JsonOpt = False,
+    result_file: Annotated[
+        Path | None,
+        typer.Option(help="Save the complete recipe result as JSON, including failures"),
+    ] = None,
 ) -> None:
     """Run every step of a recipe on a dataset"""
     from frontier_prep.recipes import Recipe, run_recipe
@@ -396,6 +400,8 @@ def recipe_run(
             console.print(f"  [{sr.index}] {sr.op}: {sr.status} -> {v} {sr.error or ''}")
 
     out = run_recipe(r, dataset, ctx=Context(seed=seed, workers=workers), on_step=on_step)
+    if result_file is not None:
+        result_file.write_text(out.model_dump_json(indent=2) + "\n", encoding="utf-8")
     if as_json:
         _dump(out.model_dump())
     else:

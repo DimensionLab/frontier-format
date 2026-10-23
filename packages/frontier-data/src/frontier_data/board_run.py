@@ -591,7 +591,8 @@ class BoardRun:
         result = work / "result.json"
         commands.append(
             (
-                ["frontier_data.board_run", "recipe", str(path), dataset, str(result)],
+                ["frontier_prep", "recipe", "run", str(path), "--dataset", dataset,
+                 "--result-file", str(result)],
                 {},
             )
         )
@@ -1480,20 +1481,6 @@ def run_board(doc: dict[str, Any], workers: int = 4) -> bool:
 
 def _helper(argv: list[str]) -> int:
     """Small jobs a step runs as a child, so their output is the step's log."""
-    if argv[:1] == ["recipe"] and len(argv) == 4:
-        # run a recipe and leave its result as JSON for the step to read
-        from frontier_prep.recipes import Recipe, run_recipe
-
-        result = run_recipe(Recipe.load(argv[1]), argv[2])
-        Path(argv[3]).write_text(result.model_dump_json(indent=2), encoding="utf-8")
-        for s in result.steps:
-            say(
-                f"{s.status:8} {s.op}" + (f"  {one_line(s.error)}" if s.error else ""),
-                level="info" if s.status in ("ok", "skipped") else "error",
-                op=s.op,
-                status=s.status,
-            )
-        return 0
     if argv[:1] == ["upload"] and len(argv) == 2:
         done = _upload_results(Path(argv[1]))
         say(
@@ -1501,7 +1488,7 @@ def _helper(argv: list[str]) -> int:
             files=len(done),
         )
         return 0
-    print("usage: python -m frontier_data.board_run recipe <recipe.json> <dataset> <result.json>")
+    print("usage: python -m frontier_data.board_run upload <output-directory>")
     return 2
 
 
