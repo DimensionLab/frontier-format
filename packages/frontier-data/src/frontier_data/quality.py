@@ -600,6 +600,7 @@ def run_quality(
     write_html: bool = True,
     precomputed: Mapping[str, SampleStats] | None = None,
     mean_outlier_action: Literal["fail", "warn"] = "fail",
+    dataset_location: str | Path | None = None,
 ) -> dict[str, Any]:
     """Run every check, write ``quality/report.json`` (+ ``report.html``) and return the report.
 
@@ -608,6 +609,8 @@ def run_quality(
     computed here; the dataset-level statistics are merged in ``ds.sample_ids`` order either
     way, so the report is the same as that of a serial run. The entries are copied, not
     modified.
+    ``dataset_location`` records the final location when evaluating a private staging
+    directory before atomic publication; numerical reads still use ``ds.root``.
     """
     t0 = time.perf_counter()
     ids = ds.sample_ids
@@ -785,7 +788,7 @@ def run_quality(
     )
     report = {
         "dataset": ds.name,
-        "root": str(ds.root),
+        "root": str(ds.root if dataset_location is None else dataset_location),
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "elapsed_s": time.perf_counter() - t0,
         "summary": {

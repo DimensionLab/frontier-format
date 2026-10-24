@@ -312,3 +312,18 @@ def test_ingestion_resplit_and_quality_stay_private(tmp_path, monkeypatch):
     )
     assert result.manifest.split_strategy["name"] == "random"
     assert result.root == output
+
+
+def test_published_quality_report_uses_final_location(tmp_path):
+    import json
+
+    from frontier_data.ingest.the_well import convert_the_well
+
+    source, output = tmp_path / "source.h5", tmp_path / "dataset"
+    fixture(source)
+    ds = convert_the_well({"train": [source]}, output, name="test", fields=["pressure"])
+    report = json.loads((ds.root / "quality/report.json").read_text())
+    assert report["root"] == str(output)
+    assert ".arrayroute-" not in (ds.root / "quality/report.html").read_text()
+    for path in ds.root.rglob("*.json"):
+        assert ".arrayroute-" not in path.read_text(), path

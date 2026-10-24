@@ -471,6 +471,7 @@ def convert_the_well(
             strategy=strategy,
             quality=quality and resplit_seed is None,
             progress=progress,
+            dataset_location=out,
         )
         if resplit_seed is not None:
             from frontier_data.splits import random_split
@@ -484,7 +485,7 @@ def convert_the_well(
             if quality:
                 from frontier_data.quality import run_quality
 
-                run_quality(ds, progress=progress)
+                run_quality(ds, progress=progress, dataset_location=out)
     return Dataset(out)
 
 

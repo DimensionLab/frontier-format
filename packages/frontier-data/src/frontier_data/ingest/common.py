@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -36,6 +37,7 @@ def finish_dataset(
     strategy: dict[str, Any],
     quality: bool,
     progress: ProgressFn | None = None,
+    dataset_location: str | Path | None = None,
 ) -> Any:
     """Write the manifest with ``splits`` and (optionally) the quality report; return the
     opened :class:`~frontier_data.dataset.Dataset`."""
@@ -54,7 +56,7 @@ def finish_dataset(
     if quality:
         from frontier_data.quality import run_quality
 
-        run_quality(ds, progress=progress)
+        run_quality(ds, progress=progress, dataset_location=dataset_location)
         ds = Dataset(writer.root)
     return ds
 
