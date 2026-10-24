@@ -181,6 +181,23 @@ must be regenerated or explicitly converted before using this exporter.
 The comparison-dataset and service-response helpers retain their current eager behavior;
 this change does not make those independent consumers streaming.
 
+### Score chunked predictions
+
+```python
+curves = view.error_curves("velocity", buffer_bytes=128 << 20)
+print(curves["rmse"], view.units("velocity"))
+```
+
+This uses ArrayRoute's canonical paired error curves directly from the chunked store;
+it does not read the NPZ or materialize the whole rollout. Declared validity masks are
+required. It returns per-step RMSE in field units, dimensionless relative errors and
+correlation, and mean-square values in squared field units. Two passes and bounded read
+windows trade I/O for memory. The numerical allowance includes workspace and windows,
+but excludes backend caches and codec scratch. A whole-time spatial column must fit.
+Source values, shape and numerical stack must stay fixed for byte-identical replay;
+record `arrayroute.error_curves.ALGORITHM` with results. This method does not perform
+spectral, conservation or uncertainty diagnostics and does not replace a full benchmark.
+
 ## Inspect before reading payloads
 
 ```sh

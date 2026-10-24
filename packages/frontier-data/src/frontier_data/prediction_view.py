@@ -131,3 +131,25 @@ class PredictionView:
         ):
             raise ValueError("Select distinct fields present in this prediction store")
         return names
+
+    def error_curves(
+        self, field: str, *, buffer_bytes: int | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Score a stored rollout without reading its NPZ or materializing full fields.
+
+        Returns dimensionless normalized errors/correlation, RMSE and sigma in field
+        units, and mean-square curves in squared field units. Times remain available
+        through time(). This is not the complete Frontier benchmark or ensemble UQ.
+        """
+        from arrayroute.error_curves import error_curves
+
+        has_mask = f"{field}_valid" in self.group["fields"]
+        if (self.info.get("validity_file") or self.info.get("validity_fields")) and not has_mask:
+            raise ValueError(f"{field}: chunked validity is required to score this prediction")
+        return error_curves(
+            self.reader(field), self.reader(field, "true"),
+            validity=self.reader(field, "valid") if has_mask else None,
+            buffer_bytes=self.session.buffer_bytes if buffer_bytes is None else buffer_bytes,
+            cancelled=cancelled, stats=self.stats,
+        )

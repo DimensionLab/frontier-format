@@ -226,3 +226,44 @@ def test_invalid_mask_rejected_before_writing_predictions(tmp_path, mask):
         write_transient_prediction(tmp_path, "a", times=np.arange(6),
                                    pred={"u": truth}, true={"u": truth}, validity={"u": mask})
     assert not (tmp_path / "a.npz").exists()
+
+
+@pytest.mark.parametrize("engine", ["zarr-python", "tensorstore", "zarrista"])
+def test_rollout_error_curves_without_npz(case, engine, monkeypatch):
+    _, predictions, truth, _ = case
+    (predictions / 'a.npz').unlink()
+    monkeypatch.setattr(np, 'load', lambda *a, **kw: pytest.fail('NPZ access'))
+    view = PredictionView(predictions, 'a', session=LocalReadSession(engine))
+    result = view.error_curves('u')
+    np.testing.assert_allclose(result['rmse'], 2 * np.sqrt(3), rtol=1e-14)
+    expected = np.linalg.norm(np.full_like(truth, 2).reshape(6, -1), axis=1) / np.linalg.norm(
+        truth.reshape(6, -1), axis=1)
+    np.testing.assert_allclose(result['l2_rel'], expected, rtol=1e-6)
+    with pytest.raises(InterruptedError):
+        view.error_curves('u', cancelled=lambda: True)
+
+
+def test_rollout_scoring_requires_declared_validity(case):
+    _, predictions, _, _ = case
+    info = predictions / 'a.json'
+    data = json.loads(info.read_text())
+    data['validity_fields'] = ['u']
+    info.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='validity'):
+        PredictionView(predictions, 'a').error_curves('u')
+
+
+def test_rollout_scoring_uses_stored_masks(tmp_path):
+    truth = np.ones((3, 7, 9, 2, 3), dtype=np.float32)
+    pred = truth + np.array([3, 4, 0], dtype=np.float32)
+    valid = np.ones(truth.shape, bool)
+    valid[:, :4] = False
+    truth[~valid], pred[~valid] = np.nan, np.inf
+    write_transient_prediction(tmp_path, 'mask', times=np.arange(3, dtype=float),
+                               pred={'u': pred}, true={'u': truth}, validity={'u': valid},
+                               field_units={'u': 'm/s'})
+    (tmp_path / 'mask.npz').unlink()
+    (tmp_path / 'mask.validity.npz').unlink()
+    result = PredictionView(tmp_path, 'mask').error_curves('u')
+    np.testing.assert_array_equal(result['rmse'], [5, 5, 5])
+    assert result['finite'].all()
