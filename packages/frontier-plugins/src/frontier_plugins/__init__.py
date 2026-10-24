@@ -20,7 +20,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 API_VERSIONS: dict[str, str] = dict.fromkeys(
     (

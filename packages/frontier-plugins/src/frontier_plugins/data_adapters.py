@@ -41,15 +41,22 @@ def declaration(manifest: dict[str, Any], name: str) -> dict[str, Any]:
 
 def catalog() -> list[dict[str, Any]]:
     """Metadata-only report for the local executor; never probes or initializes CUDA."""
+    return _catalog(metadata.entry_points(group=GROUP))
+
+
+def _catalog(entries: Any) -> list[dict[str, Any]]:
     from . import check_requirement
 
     rows = []
-    for entry in metadata.entry_points(group=GROUP):
+    for entry in entries:
         row: dict[str, Any] = {"adapter": entry.name, "plugin": None, "available": False,
                                "problems": [], "runtime_verified": False}
         try:
             if entry.dist is None:
                 raise ValueError("Data adapters require installed distribution metadata")
+            row["distribution"] = entry.dist.name
+            row["version"] = entry.dist.version
+            row["entry_point"] = entry.value
             manifest = manifest_for_distribution(entry.dist) or {}
             row["plugin"] = manifest.get("id")
             if not isinstance(row["plugin"], str) or not row["plugin"].strip():
@@ -59,6 +66,7 @@ def catalog() -> list[dict[str, Any]]:
             api = manifest.get("api", {})
             if not isinstance(api, dict) or "data_adapters" not in api:
                 raise ValueError("api.data_adapters must declare a supported interface range")
+            row["api"] = dict(api)
             require_compatible(entry)
             if platform.system() not in capabilities["platforms"]:
                 raise ValueError(f"Unsupported executor platform: {platform.system()}")
@@ -79,13 +87,21 @@ def catalog() -> list[dict[str, Any]]:
 
 
 def load(plugin: str, adapter: str, *, stage: str, device: str = "cpu") -> Any:
+    """Activate one compatible provider; use activate() to also retain its provenance."""
+    return activate(plugin, adapter, stage=stage, device=device)[0]
+
+
+def activate(
+    plugin: str, adapter: str, *, stage: str, device: str = "cpu",
+) -> tuple[Any, dict[str, Any]]:
     """Import only the selected, enabled adapter after capability/dependency checks.
 
     Factories are trusted administrator-installed code, not a sandbox. A source URI
     never supplies an executable module path. Hardware checks belong to the factory
     on the selected executor, and must fail rather than silently change devices.
     """
-    matches = [row for row in catalog() if row["plugin"] == plugin and row["adapter"] == adapter]
+    entries = [entry for entry in metadata.entry_points(group=GROUP) if entry.name == adapter]
+    matches = [row for row in _catalog(entries) if row["plugin"] == plugin]
     if len(matches) != 1:
         raise ValueError("Install a unique data adapter with this plugin and adapter id")
     row = matches[0]
@@ -93,9 +109,15 @@ def load(plugin: str, adapter: str, *, stage: str, device: str = "cpu") -> Any:
         raise ValueError("; ".join(row["problems"]))
     if stage not in row["capabilities"]["stages"] or device not in row["capabilities"]["devices"]:
         raise ValueError(f"{plugin}/{adapter} does not support {stage} on {device}")
-    for entry in metadata.entry_points(group=GROUP):
+    for entry in entries:
         if entry.name == adapter and entry.dist is not None:
             manifest = manifest_for_distribution(entry.dist) or {}
             if manifest.get("id") == plugin:
-                return load_entry_point(entry)
+                if entry.dist.version != row["version"] or entry.value != row["entry_point"]:
+                    raise ValueError("Installed adapter changed during activation; retry discovery")
+                return load_entry_point(entry), {
+                    key: row[key] for key in
+                    ("plugin", "adapter", "distribution", "version", "entry_point", "api",
+                     "capabilities")
+                }
     raise ValueError("Installed adapters changed during discovery; retry discovery")

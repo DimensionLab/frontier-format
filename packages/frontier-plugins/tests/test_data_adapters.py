@@ -11,7 +11,8 @@ from frontier_plugins import IncompatiblePluginError, data_adapters
 
 @pytest.fixture
 def installed(monkeypatch):
-    entry = SimpleNamespace(name="reader", dist=object())
+    entry = SimpleNamespace(name="reader", value="community.reader:open",
+                            dist=SimpleNamespace(name="community-reader", version="17.3.0"))
     manifest = {"id": "community-data", "api": {"data_adapters": ">=1,<2"},
                 "data_adapters": {"reader": {
         "summary": "Example reader", "stages": ["read"], "devices": ["cpu"],
@@ -39,6 +40,45 @@ def test_explicit_selection_loads_only_matching_entry(installed, monkeypatch):
     monkeypatch.setattr(data_adapters, "load_entry_point", loader)
     assert data_adapters.load("community-data", "reader", stage="read") is factory
     loader.assert_called_once_with(installed[0])
+
+
+def test_activation_records_independent_package_and_interface_versions(installed, monkeypatch):
+    factory = Mock()
+    monkeypatch.setattr(data_adapters, "load_entry_point", lambda _: factory)
+    activated, receipt = data_adapters.activate("community-data", "reader", stage="read")
+    assert activated is factory
+    assert receipt["version"] == "17.3.0"
+    assert receipt["api"] == {"data_adapters": ">=1,<2"}
+    assert receipt["distribution"] == "community-reader"
+    assert receipt["entry_point"] == "community.reader:open"
+
+
+def test_package_change_during_activation_is_rejected(installed, monkeypatch):
+    entry, _ = installed
+    initial = data_adapters.catalog()
+    monkeypatch.setattr(data_adapters, "_catalog", lambda _: initial)
+    entry.dist.version = "18.0.0"
+    loader = Mock()
+    monkeypatch.setattr(data_adapters, "load_entry_point", loader)
+    with pytest.raises(ValueError, match="changed during activation"):
+        data_adapters.activate("community-data", "reader", stage="read")
+    loader.assert_not_called()
+
+
+def test_activation_does_not_check_unselected_adapter_dependencies(installed, monkeypatch):
+    entry, manifest = installed
+    unrelated = SimpleNamespace(name="unrelated", value="community.reader:unrelated",
+                                dist=entry.dist)
+    manifest["data_adapters"]["unrelated"] = {
+        **manifest["data_adapters"]["reader"], "requires": ["nonexistent-engine-for-test>=1"],
+    }
+    monkeypatch.setattr(metadata, "entry_points", lambda **_: [entry, unrelated])
+    checked = []
+    monkeypatch.setattr(data_adapters, "require_compatible", lambda ep: checked.append(ep.name))
+    monkeypatch.setattr(data_adapters, "load_entry_point", lambda ep: ep.name)
+    factory, _ = data_adapters.activate("community-data", "reader", stage="read")
+    assert factory == "reader"
+    assert checked == ["reader"]
 
 
 @pytest.mark.parametrize("failure", ["duplicate", "disabled", "dependency", "platform"])

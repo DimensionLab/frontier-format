@@ -303,7 +303,13 @@ class FieldReader(ArrayFieldReader):
         engine: str | None = None,
         buffer_bytes: int = 128 << 20,
         session: LocalReadSession | None = None,
+        adapter: tuple[str, str] | None = None,
+        adapter_options: Mapping[str, Any] | None = None,
     ):
+        if adapter is not None and (engine is not None or session is not None):
+            raise ValueError("Choose an installed adapter or a built-in read session, not both")
+        if adapter is None and adapter_options:
+            raise ValueError("Adapter options require an installed adapter")
         declared = [f for f in sample.meta.fields if f.name == name]
         if not declared:
             raise ValueError(f"Field {name!r} is not declared in the sample metadata")
@@ -325,11 +331,27 @@ class FieldReader(ArrayFieldReader):
         self.location, self.lod = location, lod
         if session is not None and engine is not None and session.engine != engine:
             raise ValueError("Requested engine differs from the shared read session")
-        self.session = session or LocalReadSession(
-            engine or "zarr-python", buffer_bytes=buffer_bytes
-        )
+        self.session = None
+        self.adapter_info: dict[str, Any] | None = None
+        if adapter is None:
+            self.session = session or LocalReadSession(
+                engine or "zarr-python", buffer_bytes=buffer_bytes
+            )
+            reader = self.session.open(sample.store_path, array.path)
+            self.engine = self.session.engine
+        else:
+            from frontier_plugins.data_adapters import activate
+
+            factory, self.adapter_info = activate(*adapter, stage="read", device="cpu")
+            backend = factory({"store": str(sample.store_path), "array_path": array.path},
+                              **dict(adapter_options or {}))
+            if (backend.spec.shape != tuple(array.shape)
+                    or backend.dtype != array.dtype):
+                raise ValueError("Adapter array shape or dtype differs from source metadata")
+            reader = ArrayReader(backend, buffer_bytes=buffer_bytes)
+            self.engine = "/".join(adapter)
         super().__init__(
-            self.session.open(sample.store_path, array.path),
+            reader,
             tuple(sample.dims(array_name, location, lod)),
             info.units,
             sample.location if location == "grid" else location,

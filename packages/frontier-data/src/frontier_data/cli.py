@@ -31,6 +31,35 @@ app.add_typer(versions_app, name="versions")
 console = joblog.console("frontier_data")
 
 
+@app.command("data-adapters")
+def data_adapters_command(
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Machine-readable capabilities")
+    ] = False,
+) -> None:
+    """List installed data engines on this executor without loading their native libraries."""
+    from frontier_plugins.data_adapters import catalog
+
+    rows = catalog()
+    if json_output:
+        typer.echo(json.dumps({"adapters": rows, "scope": "current executor"}, indent=2))
+        return
+    if not rows:
+        typer.echo("No data adapters installed in this executor's Python environment.")
+        return
+    table = Table("Adapter", "Stages", "Devices", "Availability")
+    for row in rows:
+        capabilities = row.get("capabilities", {})
+        table.add_row(
+            f"{row['plugin'] or 'unknown'}/{row['adapter']}",
+            ", ".join(capabilities.get("stages", [])),
+            ", ".join(capabilities.get("devices", [])),
+            "Installed; runtime untested" if row["available"] else "; ".join(row["problems"]),
+        )
+    console.print(table)
+    typer.echo("Use a read adapter with query-field --adapter plugin/adapter.")
+
+
 @app.command("catalog-build")
 def catalog_build(dataset: Path, out: Path) -> None:
     """Create an indexed metadata snapshot of a dataset that is not being modified."""
@@ -78,6 +107,9 @@ def query_field(
         list[str] | None, typer.Option(help="Named index/slice, e.g. time=10 x=20:80")
     ] = None,
     engine: str = "zarr-python",
+    adapter: Annotated[
+        str | None, typer.Option(help="Installed plugin/adapter; list choices with data-adapters")
+    ] = None,
     read_strategy: Annotated[
         str, typer.Option(help="native, dense, parallel or bulk; choose with benchmark-field")
     ] = "native",
@@ -120,17 +152,27 @@ def query_field(
         if profile is not None:
             from frontier_data.tuning import profiled_field
 
-            if (engine != 'zarr-python' or read_strategy != 'native' or gather_workers != 4
+            if (adapter is not None or engine != 'zarr-python'
+                    or read_strategy != 'native' or gather_workers != 4
                     or budget_mib != 128 or range_policy is not None or plan_workers is not None
                     or total_read_budget_mib is not None):
                 raise ValueError('Use --profile without manual reader settings or buffer limits')
             selectors = parse_selectors(select or [])
             reader, receipt = profiled_field(profile, dataset, sample, field, selectors,
                                              location=location, lod=lod)
-            _query_field_output(reader, selectors, sample, field, reader.session.engine,
+            _query_field_output(reader, selectors, sample, field, reader.engine,
                 out, max_output_mib, {'kind': 'dataset', 'path': str(dataset.resolve()),
                     'location': reader.location, 'lod': reader.lod, 'profile': receipt})
             return
+        selected_adapter = None
+        if adapter is not None:
+            parts = adapter.split("/")
+            if len(parts) != 2 or not all(parts):
+                raise ValueError("Use plugin/adapter from frontier-data data-adapters")
+            if (engine != "zarr-python" or range_policy is not None
+                    or read_strategy != "native" or gather_workers != 4):
+                raise ValueError("Use --adapter without built-in engine, range or gather settings")
+            selected_adapter = (parts[0], parts[1])
         policy = None
         if range_policy is not None:
             with range_policy.open('rb') as handle:
@@ -150,9 +192,10 @@ def query_field(
             field,
             location=location,
             lod=lod,
-            engine=engine,
             buffer_bytes=budget_mib << 20,
-            session=LocalReadSession(engine, buffer_bytes=budget_mib << 20,
+            adapter=selected_adapter,
+            session=None if selected_adapter else LocalReadSession(
+                                     engine, buffer_bytes=budget_mib << 20,
                                      range_policy=policy, read_strategy=read_strategy,
                                      gather_workers=gather_workers),
         )
@@ -161,7 +204,7 @@ def query_field(
             parse_selectors(select or []),
             sample,
             field,
-            engine,
+            reader.engine,
             out,
             max_output_mib,
             {
@@ -169,6 +212,7 @@ def query_field(
                 "path": str(dataset.resolve()),
                 "location": reader.location,
                 "lod": reader.lod,
+                "adapter": reader.adapter_info,
                 "range_policy": asdict(policy) if policy is not None else None,
                 "read_strategy": read_strategy,
                 "gather_workers": gather_workers if read_strategy in {"parallel", "bulk"} else None,
@@ -176,7 +220,9 @@ def query_field(
             plan_workers=plan_workers,
             total_read_budget_mib=total_read_budget_mib,
         )
-    except (ValueError, KeyError, OSError, ImportError, MemoryError, TypeError) as exc:
+    except (
+        ValueError, KeyError, OSError, ImportError, MemoryError, TypeError, RuntimeError
+    ) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
 

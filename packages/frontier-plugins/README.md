@@ -208,6 +208,14 @@ has its operation-specific documented parameters; Frontier's `normalize` factory
 accepts `mean`, `scale` and `device` and returns a callable for float32 tensors.
 Cache the selected factory/operation outside per-sample loops.
 
+With `frontier-plugins>=1.4`, consumers retain provenance with `activate(...)`
+instead of `load(...)`. It
+returns `(factory, receipt)`, recording the plugin and adapter ids, distribution
+version, entry-point target, supported API ranges and capabilities. The version
+belongs to the plugin's own release sequence. Activation rejects a package
+version or entry-point change between discovery and import; callers must still
+pin their complete environment for reproducibility.
+
 `exact` describes lossless deterministic reads of a fixed source. `fixed-runtime`
 requires the same recorded execution environment for exact arithmetic replay;
 `statistical` must supply its own error/distribution checks. A declaration alone

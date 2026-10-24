@@ -730,3 +730,31 @@ and duplicates are preserved; the same selection API applies to all three engine
 ArrayRoute read budgets and native engine caches are separate memory allocations.
 Supplying a snapshot identifier records provenance but does not freeze a mutable
 store. No universal remote-storage authentication is implied by these local factories.
+
+An engineer can use the same installed adapters without writing a Python script:
+
+```bash
+frontier-data data-adapters
+frontier-data query-field ./simulation case velocity \
+  --adapter frontier-data/zarrista --select time=10 --select x=20:80 \
+  --budget-mib 16
+frontier-data query-field ./simulation case velocity \
+  --adapter frontier-data/zarrista --select time=10 --select x=20:80 \
+  --budget-mib 16 --out region.npy > region.receipt.json
+```
+
+The first query reports the selection and estimated resource cost. The second
+streams the selection to an NPY file. Keep its JSON receipt with the exported file:
+NPY itself does not encode physical units. Receipts include dimensions, units,
+association and the activated plugin's distribution/version, entry point and API
+requirements. This records the implementation used; it does not freeze a mutable
+dataset or attest package contents.
+
+Read adapters must match the stored sample's shape and dtype before any field
+values are read. Unknown, disabled or incompatible providers produce an error;
+Frontier does not substitute another engine. `--adapter` cannot be mixed with a
+built-in engine policy or a tuning profile for a different implementation.
+
+This path covers discovery, field preview and region export in the SDK and CLI.
+Selecting an adapter here does not yet change the native canvas or a training
+job's configured reader.
