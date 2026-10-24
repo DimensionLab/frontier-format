@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from arrayroute.backends import NumpyBackend
+from arrayroute.hashing import DigestPipeline
 from arrayroute.ordered import OrderedSelection, read_flat
 from arrayroute.reader import ArrayReader
 from arrayroute.statistics import CompensatedSum
@@ -500,53 +501,54 @@ def scan_field(
     io_rows = max(
         block_rows, (io_bytes // (n_comp * max(8, arr.dtype.itemsize))) // block_rows * block_rows
     )
-    for outer in range(0, n_ent, io_rows):
-        end = min(n_ent, outer + io_rows)
-        prev: np.ndarray | None = None
-        for j, source in enumerate(sources):
-            raw = read_flat(source, outer * n_comp, end * n_comp, info.sample.read_stats, None)
-            digests[j].update(memoryview(raw).cast("B"))
-            current = raw.astype(np.float64).reshape(end - outer, n_comp)
-            del raw
-            for start in range(outer, end, block_rows):
-                stop = min(end, start + block_rows)
-                p0, p1 = np.searchsorted(pidx, [start, stop])
-                l0, l1 = np.searchsorted(lidx, [start, stop])
-                a = current[start - outer : stop - outer]
-                finite = np.isfinite(a)
-                n_bad = int(a.size - np.count_nonzero(finite))
-                if n_bad:
-                    scan.non_finite[j] += n_bad
-                    n_nan = int(np.isnan(a).sum())
-                    scan.n_nan += n_nan
-                    scan.n_inf += n_bad - n_nan
-                    good = a[finite]
-                    a[~finite] = 0.0
-                else:
-                    good = a
-                if good.size:
-                    squares[j].add(float(np.einsum("ij,ij->", a, a)))
-                    sums[j].add(float(a.sum()))
-                    lo, hi = float(good.min()), float(good.max())
-                    scan.vmin[j] = lo if np.isnan(scan.vmin[j]) else min(scan.vmin[j], lo)
-                    scan.vmax[j] = hi if np.isnan(scan.vmax[j]) else max(scan.vmax[j], hi)
-                if scan.speed_max is not None:
-                    scan.speed_max[j] = max(
-                        scan.speed_max[j], float(np.sqrt(np.einsum("ij,ij->i", a, a).max()))
-                    )
-                scan.probes[j, p0:p1] = a[pidx[p0:p1] - start]
-                if j == 0:
-                    scan.leak_first.reshape(-1, n_comp)[l0:l1] = a[lidx[l0:l1] - start]
-                if j == n_s - 1:
-                    scan.leak_last.reshape(-1, n_comp)[l0:l1] = a[lidx[l0:l1] - start]
-                if prev is not None:
-                    d = a - prev[start - outer : stop - outer]
-                    deltas[j - 1].add(float(np.einsum("ij,ij->", d, d)))
-                    del d
-                del finite, good, a
-            prev = current
-            del current
-        del prev
+    with DigestPipeline(buffer_bytes=io_rows * n_comp * arr.dtype.itemsize) as hashing:
+        for outer in range(0, n_ent, io_rows):
+            end = min(n_ent, outer + io_rows)
+            prev: np.ndarray | None = None
+            for j, source in enumerate(sources):
+                raw = read_flat(source, outer * n_comp, end * n_comp, info.sample.read_stats, None)
+                hashing.update(digests[j], raw)
+                current = raw.astype(np.float64).reshape(end - outer, n_comp)
+                del raw
+                for start in range(outer, end, block_rows):
+                    stop = min(end, start + block_rows)
+                    p0, p1 = np.searchsorted(pidx, [start, stop])
+                    l0, l1 = np.searchsorted(lidx, [start, stop])
+                    a = current[start - outer : stop - outer]
+                    finite = np.isfinite(a)
+                    n_bad = int(a.size - np.count_nonzero(finite))
+                    if n_bad:
+                        scan.non_finite[j] += n_bad
+                        n_nan = int(np.isnan(a).sum())
+                        scan.n_nan += n_nan
+                        scan.n_inf += n_bad - n_nan
+                        good = a[finite]
+                        a[~finite] = 0.0
+                    else:
+                        good = a
+                    if good.size:
+                        squares[j].add(float(np.einsum("ij,ij->", a, a)))
+                        sums[j].add(float(a.sum()))
+                        lo, hi = float(good.min()), float(good.max())
+                        scan.vmin[j] = lo if np.isnan(scan.vmin[j]) else min(scan.vmin[j], lo)
+                        scan.vmax[j] = hi if np.isnan(scan.vmax[j]) else max(scan.vmax[j], hi)
+                    if scan.speed_max is not None:
+                        scan.speed_max[j] = max(
+                            scan.speed_max[j], float(np.sqrt(np.einsum("ij,ij->i", a, a).max()))
+                        )
+                    scan.probes[j, p0:p1] = a[pidx[p0:p1] - start]
+                    if j == 0:
+                        scan.leak_first.reshape(-1, n_comp)[l0:l1] = a[lidx[l0:l1] - start]
+                    if j == n_s - 1:
+                        scan.leak_last.reshape(-1, n_comp)[l0:l1] = a[lidx[l0:l1] - start]
+                    if prev is not None:
+                        d = a - prev[start - outer : stop - outer]
+                        deltas[j - 1].add(float(np.einsum("ij,ij->", d, d)))
+                        del d
+                    del finite, good, a
+                prev = current
+                del current
+            del prev
     scan.hashes = [digest.hexdigest() for digest in digests]
     for j in range(n_s):
         n_good = n_ent * n_comp - int(scan.non_finite[j])

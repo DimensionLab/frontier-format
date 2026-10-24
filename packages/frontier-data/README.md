@@ -525,3 +525,11 @@ metadata will remain fixed for the session and allows TensorStore to omit data f
 checks. It does not create a snapshot or lock a writer. Use that option only with an owned
 immutable revision, and create a fresh session after changing inputs. Choosing a cache size
 or engine does not change the canonical numerical reduction partition or physical units.
+
+Transient field scans overlap exact frame hashing with their numerical checks through
+ArrayRoute's `DigestPipeline`. Each scan adds one hashing worker and a copied payload bounded
+by its I/O batch (up to 16 MiB for the numeric types supported by the scanner). Hash algorithms,
+byte order, probe selection and the versioned numerical reduction order remain unchanged.
+Preparation workers each own their hashing pipeline; account for these workers and buffers
+when setting outer parallelism. A scan returns only after hashing succeeds, and closes its
+worker if reading or numerical processing fails.
