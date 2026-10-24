@@ -543,8 +543,8 @@ conversion, exact percentile scope, pass count and selected-byte SHA-256 in the
 failure. Mean/std reduction semantics are versioned by `prep.quality.check` 1.3.0; percentiles
 retain full-selection linear semantics. Original data and physical units are not rewritten.
 
-These changes do not bound every quality stage: steady-surface mesh statistics, signal
-normalization, mesh connectivity and FFT workspace still
+These changes do not bound every quality stage: steady-surface mesh statistics,
+mesh connectivity and FFT workspace still
 have separate materialization requirements. Reader/native cache allowances remain additional
 to numerical workspace. Exact bounded percentiles may cost additional reads; choose and
 measure the reader/cache policy for the actual immutable dataset revision.
@@ -565,3 +565,12 @@ numeric source types use float64 square/sum/square-root, which is safe for their
 The chosen reduction is recorded. Float64 results can differ in last bits. This change
 is versioned by `prep.quality.check` 1.4.0. Time-dependent velocity CFL continues to use
 probes for p99 and full scanned-frame maxima; the two percentile scopes remain distinct.
+
+Signal-history quality now fits ArrayRoute channel statistics in bounded blocks and scans a
+lazy standardized view. `prep.quality.check` 1.5.0 records the versioned finite-only policy,
+channel order, fitted coefficients, source-byte fingerprints and workspace in
+`signal_normalization`. The statistics workspace applies per source; the derived reader
+adds a 16 MiB allowance. Time axes and retained diagnostics still grow with history length.
+Original physical units remain unchanged; normalization is dimensionless and used only for
+quality comparisons. This per-sample diagnostic fit is not a training transform: training
+pipelines must fit only training data and reuse the recorded parameters for held-out data.

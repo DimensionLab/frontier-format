@@ -4,8 +4,8 @@
 :func:`transient_sample_pass` is the per-sample pass that :func:`frontier_data.quality.run_quality`
 uses for every sample that is not a steady surface. Field scans use bounded ArrayRoute
 batches across steps; spectra select the spatial crop before reading. Other field summaries
-and static non-finite checks stream bounded reads. Signal normalization, geometry checks and
-FFT workspaces have separate materialization requirements. The pass yields these checks:
+and static non-finite checks stream bounded reads. Signal normalization uses bounded fitted
+readers; time axes, retained reports and FFT workspaces remain separate. The pass yields:
 
 * ``nan_inf_per_step``: non-finite values per step and field.
 * ``temporal_continuity``: jumps, frozen frames, duplicated steps, and the ``times`` axis.
@@ -35,7 +35,7 @@ import math
 import warnings
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -45,7 +45,9 @@ from arrayroute.derived import VectorMagnitudeBackend
 from arrayroute.hashing import DigestPipeline
 from arrayroute.ordered import OrderedSelection, read_flat
 from arrayroute.quantiles import count_nonfinite, finite_statistics
-from arrayroute.reader import ArrayReader
+from arrayroute.reader import ArrayReader, ReadStats
+from arrayroute.standardized import ALGORITHM as SIGNAL_NORMALIZATION_ALGORITHM
+from arrayroute.standardized import StandardizedChannelsBackend
 from arrayroute.statistics import CompensatedSum
 from frontier_data.quality import CheckResult, Status, field_stats, streamed_field_stats
 from frontier_data.splits import TrajectoryFingerprint
@@ -330,6 +332,7 @@ class FieldScan:
     #: measured signals (sensors, SCADA): a sudden change is physics (a gust, a start), so
     #: jumps and coincidentally equal frames only warn; a stalled frame still fails
     measured: bool = False
+    normalization: dict[str, Any] | None = None
 
     @property
     def n_values(self) -> int:
@@ -396,28 +399,38 @@ def is_signal_sample(sample: Sample) -> bool:
     if not sample.is_transient or sample.kind != "grid" or int(np.prod(sample.shape)) != 1:
         return False
     names = sample.signal_names
-    return bool(names) and any(np.asarray(sample.signal(n, t=slice(0, 1))).ndim == 2 for n in names)
+    return bool(names) and any(sample.array(f"signals/{n}").ndim == 2 for n in names)
 
 
-def signal_stack(sample: Sample) -> tuple[np.ndarray, list[str]]:
-    """``(T, C)`` float64 of every temporal signal of a signal sample, standardised per channel
-    over the sample (no channel dominates the step norms), and the channel names."""
-    parts, names = [], []
+def signal_reader(
+    sample: Sample, *, workspace_bytes: int = 32 << 20,
+) -> tuple[ArrayReader, list[str], dict[str, Any]]:
+    """Fit finite channel statistics, then read standardized signals lazily in source order."""
+    sources, names, source_names = [], [], []
     for n in sample.signal_names:
-        a = np.asarray(sample.signal(n), dtype=np.float64)
+        a = sample.array(f"signals/{n}")
         if a.ndim != 2:
             continue
-        parts.append(a)
+        sources.append(sample._reader(a))
+        source_names.append(n)
         names += [n] if a.shape[1] == 1 else [f"{n}_{i}" for i in range(a.shape[1])]
-    x = np.concatenate(parts, axis=1)
-    mu = np.nanmean(x, axis=0)
-    sd = np.nanstd(x, axis=0)
-    return (x - mu) / np.where(sd > 0, sd, 1.0), names
+    backend = StandardizedChannelsBackend(
+        sources, workspace_bytes=workspace_bytes, source_stats=sample.read_stats,
+    )
+    details = {
+        "algorithm": SIGNAL_NORMALIZATION_ALGORITHM, "sources": source_names,
+        "channels": names, "parameters": [asdict(p) for p in backend.parameters],
+        "workspace_bytes": workspace_bytes, "finite_policy": "exclude_nan_and_infinity",
+        "fingerprint_scope": "native_source_bytes_during_fitting",
+    }
+    return ArrayReader(backend, buffer_bytes=16 << 20), names, details
 
 
-def scan_signals(info: SampleInfo, steps: np.ndarray) -> FieldScan:
+def scan_signals(
+    info: SampleInfo, steps: np.ndarray, *, workspace_bytes: int = 32 << 20,
+) -> FieldScan:
     """The scan of a signal sample's standardised channel vector, named ``signals``."""
-    z, _ = signal_stack(info.sample)
+    z, _, details = signal_reader(info.sample, workspace_bytes=workspace_bytes)
     info.arrays["signals"] = z
     info.dims["signals"] = ["time", "component"]
     try:
@@ -425,6 +438,7 @@ def scan_signals(info: SampleInfo, steps: np.ndarray) -> FieldScan:
     finally:
         del info.arrays["signals"], info.dims["signals"]
     scan.measured = True
+    scan.normalization = details
     return scan
 
 
@@ -457,12 +471,18 @@ def scan_field(
     """
     info = inspect_sample(sample)
     arr = info.arrays[name]
+    reader = (
+        arr if isinstance(arr, ArrayReader) else
+        ArrayReader(NumpyBackend(arr), buffer_bytes=64 << 20)
+        if isinstance(arr, np.ndarray) else info.sample._reader(arr)
+    )
     if velocity is None:
         velocity = info.velocity == ("field", name)
-    step_shape = tuple(int(s) for s in arr.shape[1:])
+    step_shape = reader.backend.spec.shape[1:]
     n_comp = step_shape[-1] if info.dims[name][-1:] == ["component"] and step_shape else 1
     if n_comp * 64 > 8 << 20:
         raise MemoryError("Field components exceed the quality-scan workspace allowance")
+    read_stats = ReadStats() if isinstance(arr, ArrayReader) else info.sample.read_stats
     n_ent = max(int(np.prod(step_shape)) // max(n_comp, 1), 1)
     n_s = int(steps.size)
     n_probe = int(np.clip(PROBE_BUDGET // max(n_s * n_comp, 1), 64, PROBE_POINTS))
@@ -485,11 +505,6 @@ def scan_field(
         probes=np.zeros((n_s, pidx.size, n_comp), dtype=np.float32),
         speed_max=np.zeros(n_s) if velocity else None,
     )
-    reader = (
-        ArrayReader(NumpyBackend(arr), buffer_bytes=64 << 20)
-        if isinstance(arr, np.ndarray)
-        else info.sample._reader(arr)
-    )
     sources = [
         OrderedSelection.create(reader, (int(i), *(slice(None) for _ in step_shape))) for i in steps
     ]
@@ -503,14 +518,15 @@ def scan_field(
     # I/O batches may vary with the reader allowance; reduction leaves never do.
     io_bytes = min(16 << 20, reader.buffer_bytes // 2)
     io_rows = max(
-        block_rows, (io_bytes // (n_comp * max(8, arr.dtype.itemsize))) // block_rows * block_rows
+        block_rows, (io_bytes // (n_comp * max(8, reader.backend.dtype.itemsize)))
+        // block_rows * block_rows
     )
-    with DigestPipeline(buffer_bytes=io_rows * n_comp * arr.dtype.itemsize) as hashing:
+    with DigestPipeline(buffer_bytes=io_rows * n_comp * reader.backend.dtype.itemsize) as hashing:
         for outer in range(0, n_ent, io_rows):
             end = min(n_ent, outer + io_rows)
             prev: np.ndarray | None = None
             for j, source in enumerate(sources):
-                raw = read_flat(source, outer * n_comp, end * n_comp, info.sample.read_stats, None)
+                raw = read_flat(source, outer * n_comp, end * n_comp, read_stats, None)
                 hashing.update(digests[j], raw)
                 current = raw.astype(np.float64).reshape(end - outer, n_comp)
                 del raw
@@ -1688,7 +1704,7 @@ def transient_sample_pass(
         # the state of a signal sample is its channels; the grid fields only describe them
         steps, st = scan_steps(sample.n_steps, max_scan_steps)
         stride = max(stride, st)
-        scans.insert(0, scan_signals(info, steps))
+        scans.insert(0, scan_signals(info, steps, workspace_bytes=statistics_workspace_bytes))
         for n in sample.signal_names:
             arr = sample.array(f"signals/{n}")
             key = f"signals/{n}"
@@ -1705,6 +1721,8 @@ def transient_sample_pass(
     ]
     if summaries:
         checks[0].detail["field_statistics"] = summaries
+    if signal:
+        checks[0].detail["signal_normalization"] = scans[0].normalization
     n_steps = int(len(times)) if times is not None else 1
     dt = _median_dt(times)
     result = TransientSampleResult(

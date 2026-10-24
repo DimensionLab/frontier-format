@@ -106,7 +106,7 @@ class CheckParams(Params):
 @register
 class QualityCheck(BaseOp):
     id = "prep.quality.check"
-    version = "1.4.0"
+    version = "1.5.0"
     category = "quality"
     summary = (
         "Run every frontier-data quality check (closure checks first) and record each result as an "

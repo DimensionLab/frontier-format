@@ -585,6 +585,10 @@ class WindowAverage(BaseOp):
 
 class ContinuityParams(Params):
     fields: list[str] | None = None
+    normalization_workspace_mib: int = Field(
+        default=32, ge=1, strict=True,
+        description="Per-source signal scratch in MiB; reader buffers are additional.",
+    )
     jump_z: float = Field(
         default=6.0, description="Robust z of the log step change vs its neighbours."
     )
@@ -601,7 +605,7 @@ class ContinuityParams(Params):
 @register
 class ContinuityCheck(BaseOp):
     id = "prep.time.continuity_check"
-    version = "1.0.0"
+    version = "1.1.0"
     category = "time"
     summary = (
         "Flag pressure/velocity jumps between consecutive steps (robust z of the log step change), "
@@ -622,7 +626,7 @@ class ContinuityCheck(BaseOp):
     def apply_sample(
         self, ed: SampleEditor, params: ContinuityParams, *, seed: int
     ) -> SampleOutcome:
-        from frontier_data.quality_transient import is_signal_sample, signal_stack
+        from frontier_data.quality_transient import is_signal_sample, signal_reader
 
         s = ed.sample
         t = s.times
@@ -648,19 +652,38 @@ class ContinuityCheck(BaseOp):
         for name in names:
             prev = None
             r = np.full(s.n_steps, np.nan)
-            steps = (
-                iter(signal_stack(s)[0])
-                if signal
-                else ed.iter_steps(name, location=ed.location_of(name))
-            )
-            for k, step in enumerate(steps):
-                x = step.astype(np.float64)
-                if prev is not None:
-                    den = float(np.sqrt(np.sum(prev * prev)))
-                    num = float(np.sqrt(np.sum((x - prev) ** 2)))
-                    # an all-zero previous frame (displacement at t=0) has no defined change
-                    r[k] = num / den if den > 0 else (0.0 if num == 0 else np.nan)
-                prev = x
+            normalization = None
+            if signal:
+                reader, _, normalization = signal_reader(
+                    s, workspace_bytes=params.normalization_workspace_mib << 20,
+                )
+                channels = reader.backend.spec.shape[1]
+                rows = min(4096, max(1, reader.buffer_bytes // (channels * 16)))
+                for start in range(0, s.n_steps, rows):
+                    end = min(s.n_steps, start + rows)
+                    block = reader.read((slice(start, end), slice(None)))
+                    if prev is not None:
+                        den = float(np.sqrt(np.sum(prev * prev)))
+                        num = float(np.sqrt(np.sum((block[0] - prev) ** 2)))
+                        r[start] = num / den if den > 0 else (0.0 if num == 0 else np.nan)
+                    delta = np.diff(block, axis=0)
+                    den = np.sqrt(np.sum(block[:-1] ** 2, axis=1))
+                    num = np.sqrt(np.sum(delta ** 2, axis=1))
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        r[start + 1:end] = np.where(
+                            den > 0, num / den, np.where(num == 0, 0., np.nan),
+                        )
+                    prev = block[-1].copy()
+                    del block, delta, den, num
+            else:
+                for k, step in enumerate(ed.iter_steps(name, location=ed.location_of(name))):
+                    x = step.astype(np.float64)
+                    if prev is not None:
+                        den = float(np.sqrt(np.sum(prev * prev)))
+                        num = float(np.sqrt(np.sum((x - prev) ** 2)))
+                        # An all-zero previous frame has no defined relative change.
+                        r[k] = num / den if den > 0 else (0.0 if num == 0 else np.nan)
+                    prev = x
             jumps, frozen = _find_jumps(r, params.jump_z, params.jump_ratio)
             ratios = [j["ratio"] for j in jumps]
             status = "pass"
@@ -675,6 +698,8 @@ class ContinuityCheck(BaseOp):
                 "n_frozen": len(frozen),
                 "median_step_change": float(np.nanmedian(r[1:])) if s.n_steps > 1 else None,
             }
+            if normalization is not None:
+                detail["signal_normalization"] = normalization
             stats[name] = detail
             assertions.append(
                 Assertion(

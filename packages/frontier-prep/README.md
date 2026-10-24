@@ -202,3 +202,12 @@ scratch, FFTs and retained results need additional memory. `immutable: true` is 
 promise that input array values and metadata will not change during the session, not a
 snapshot implementation. The default keeps freshness checks enabled. Per-sample policies
 are recorded in the quality report, including results transported from worker processes.
+
+`prep.time.continuity_check` 1.1.0 standardizes signal histories through ArrayRoute and checks
+relative changes in blocks, including changes across block boundaries. Its
+`normalization_workspace_mib` parameter defaults to 32 MiB per source. Fitted coefficients,
+finite-only policy, channel order and fitting-source hashes are recorded in the continuity
+assertion. `prep.quality.check` 1.5.0 uses the same fitted reader with its existing
+`statistics_workspace_mib` parameter. These diagnostic operations leave source units and
+values intact. Reader buffers, native caches and retained time/diagnostic arrays are separate
+from normalization scratch; the latter arrays still grow with the number of time steps.
