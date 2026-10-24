@@ -89,8 +89,10 @@ def test_signal_list_reads_only_distinct_requested_rows(dataset, monkeypatch):
     monkeypatch.setattr(reader.backend, 'read', track)
     result = sample.signal('force', [6, 2, 6])
     assert result.tolist() == [[18., 19., 20.], [6., 7., 8.], [18., 19., 20.]]
-    assert reads == [(slice(2, 3, 1), slice(0, 3, 1)),
-                     (slice(6, 7, 1), slice(0, 3, 1))]
+    assert len(reads) == 1
+    assert [row for selection in reads for row in range(
+        selection[0].start, selection[0].stop, selection[0].step,
+    )] == [2, 6]
 
 
 def test_admission_precedes_payload_fetch_and_output_allocation(dataset, monkeypatch):

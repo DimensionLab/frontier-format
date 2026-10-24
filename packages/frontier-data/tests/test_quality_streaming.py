@@ -105,3 +105,38 @@ def test_wide_components_rejected_before_report_allocation(monkeypatch):
     monkeypatch.setattr(np, "zeros", allocate)
     with pytest.raises(MemoryError, match="components"):
         quality.scan_field(info, "wide", steps)
+
+
+@pytest.mark.parametrize('shape', [(31, 4), (31, 1, 4), (31,)])
+def test_single_entity_batches_preserve_hashes_and_diagnostics_across_budgets(shape):
+    from dataclasses import asdict
+
+    from arrayroute.backends import NumpyBackend
+    from arrayroute.reader import ArrayReader
+    from frontier_data.quality_transient import SampleInfo
+
+    values = np.random.default_rng(90).normal(size=shape).astype('f4')
+    values[3] = np.nan
+    values[7] = np.inf
+    values[11] = -0.0
+    selected = np.array([1, 3, 7, 11, 15, 19, 23, 30, 1])
+    outputs = []
+    for budget in [128, 1 << 20]:
+        reader = ArrayReader(NumpyBackend(values), buffer_bytes=budget)
+        info = SampleInfo(sample=cast(Sample, None), is_transient=True, names=['value'],
+                          arrays={'value': reader},
+                          dims={'value': ['time', *(['point'] if len(shape) == 3 else []),
+                                          *(['component'] if len(shape) > 1 else [])]},
+                          static_names=[])
+        scan = scan_field(info, 'value', selected)
+        assert scan.hashes == [hashlib.blake2b(values[i].tobytes(), digest_size=8).hexdigest()
+                               for i in selected]
+        clean = np.where(np.isfinite(values[selected]), values[selected], 0).astype('f8')
+        clean = clean.reshape(len(selected), -1)
+        np.testing.assert_allclose(scan.dnorm, np.linalg.norm(np.diff(clean, axis=0), axis=1))
+        outputs.append(asdict(scan))
+    for name, value in outputs[0].items():
+        if isinstance(value, np.ndarray):
+            assert value.tobytes() == outputs[1][name].tobytes(), name
+        else:
+            assert value == outputs[1][name], name

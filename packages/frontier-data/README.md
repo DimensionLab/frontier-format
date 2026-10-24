@@ -574,3 +574,10 @@ adds a 16 MiB allowance. Time axes and retained diagnostics still grow with hist
 Original physical units remain unchanged; normalization is dimensionless and used only for
 quality comparisons. This per-sample diagnostic fit is not a training transform: training
 pipelines must fit only training data and reuse the recorded parameters for held-out data.
+
+Single-entity temporal scans batch selected rows through ArrayRoute's strided row reader.
+Regularly spaced samples share reads without adding unrequested rows to the logical
+selection. Duplicates and requested order are preserved. Batches use at most half the
+reader allowance for output; planned reads use the remainder. This changes read grouping,
+not canonical reduction order, per-frame hashes or diagnostic values. Backend caches and
+retained report arrays remain separate from those allowances.

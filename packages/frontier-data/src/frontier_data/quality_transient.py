@@ -46,6 +46,7 @@ from arrayroute.hashing import DigestPipeline
 from arrayroute.ordered import OrderedSelection, read_flat
 from arrayroute.quantiles import count_nonfinite, finite_statistics
 from arrayroute.reader import ArrayReader, ReadStats
+from arrayroute.rows import read_rows
 from arrayroute.standardized import ALGORITHM as SIGNAL_NORMALIZATION_ALGORITHM
 from arrayroute.standardized import StandardizedChannelsBackend
 from arrayroute.statistics import CompensatedSum
@@ -521,12 +522,28 @@ def scan_field(
         block_rows, (io_bytes // (n_comp * max(8, reader.backend.dtype.itemsize)))
         // block_rows * block_rows
     )
+    def frames(first_entity: int, last_entity: int):
+        if n_ent == 1:
+            row_bytes = n_comp * reader.backend.dtype.itemsize
+            batch_rows = max(1, (reader.buffer_bytes // 2) // max(1, row_bytes))
+            for first in range(0, n_s, batch_rows):
+                batch = read_rows(
+                    reader, steps[first:first + batch_rows].tolist(), stats=read_stats,
+                )
+                for offset in range(len(batch)):
+                    yield first + offset, batch[offset].reshape(-1)
+                del batch
+        else:
+            for index, source in enumerate(sources):
+                yield index, read_flat(
+                    source, first_entity * n_comp, last_entity * n_comp, read_stats, None,
+                )
+
     with DigestPipeline(buffer_bytes=io_rows * n_comp * reader.backend.dtype.itemsize) as hashing:
         for outer in range(0, n_ent, io_rows):
             end = min(n_ent, outer + io_rows)
             prev: np.ndarray | None = None
-            for j, source in enumerate(sources):
-                raw = read_flat(source, outer * n_comp, end * n_comp, read_stats, None)
+            for j, raw in frames(outer, end):
                 hashing.update(digests[j], raw)
                 current = raw.astype(np.float64).reshape(end - outer, n_comp)
                 del raw
