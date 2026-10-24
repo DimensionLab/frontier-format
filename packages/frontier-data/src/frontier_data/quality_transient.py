@@ -24,7 +24,8 @@ Cost model: the cheap statistics (non-finite count, norms, step change, hash, sp
 RMS) are taken at every step up to :data:`MAX_SCAN_STEPS` steps (longer trajectories are scanned
 with a stride, reported as ``stride`` in the check details). Autocorrelations use at most
 :data:`EXPENSIVE_MAX_STEPS` time origins and spectra a handful of steps. Percentiles, the CFL
-p99 and the autocorrelation are computed on a fixed random set of probe points.
+p99 for time-dependent velocity and the autocorrelation use fixed probe points. Static or
+steady velocity CFL uses exact full-selection speed percentiles through a derived reader.
 """
 
 from __future__ import annotations
@@ -40,9 +41,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from arrayroute.backends import NumpyBackend
+from arrayroute.derived import VectorMagnitudeBackend
 from arrayroute.hashing import DigestPipeline
 from arrayroute.ordered import OrderedSelection, read_flat
-from arrayroute.quantiles import count_nonfinite
+from arrayroute.quantiles import count_nonfinite, finite_statistics
 from arrayroute.reader import ArrayReader
 from arrayroute.statistics import CompensatedSum
 from frontier_data.quality import CheckResult, Status, field_stats, streamed_field_stats
@@ -935,7 +937,8 @@ def _median_dt(times: np.ndarray | None) -> float | None:
 
 
 def check_cfl(
-    sample: Sample | SampleInfo, scans: Sequence[FieldScan], times: np.ndarray | None = None
+    sample: Sample | SampleInfo, scans: Sequence[FieldScan], times: np.ndarray | None = None,
+    *, statistics_workspace_bytes: int = 32 << 20,
 ) -> CheckResult:
     """Saved-step CFL number ``|u| dt / dx``: ``dt`` is the time between two *stored* frames
     (not the solver step), ``dx`` the characteristic spacing. Large values mean the flow moves
@@ -955,6 +958,7 @@ def check_cfl(
         return CheckResult(name, "skip", {"reason": "no spacing / connectivity"})
     dx, how = spacing
     source, vname = vel
+    statistics: dict[str, Any] = {}
     if source == "field":
         scan = next((s for s in scans if s.name == vname), None)
         if scan is None or scan.speed_max is None:
@@ -963,12 +967,25 @@ def check_cfl(
         speed = np.sqrt((scan.probes.astype(np.float64) ** 2).sum(axis=-1))
         u_p99 = float(np.percentile(speed, 99))
     else:
-        arr = sample.static(vname) if source == "static" else sample.field(vname)
-        speed = np.sqrt((np.asarray(arr, dtype=np.float64) ** 2).sum(axis=-1)).reshape(-1)
-        speed = speed[np.isfinite(speed)]
-        if speed.size == 0:
+        arr = sample.array(f"static/{vname}" if source == "static" else vname)
+        magnitude = VectorMagnitudeBackend(sample._reader(arr), source_stats=sample.read_stats)
+        summary = finite_statistics(
+            ArrayReader(magnitude, buffer_bytes=8 << 20), quantiles=(0.99,),
+            workspace_bytes=statistics_workspace_bytes,
+        )
+        if not summary.count:
             return CheckResult(name, "skip", {"reason": f"{vname} has no finite values"})
-        u_max, u_p99 = float(speed.max()), float(np.percentile(speed, 99))
+        u_max, u_p99 = summary.maximum, summary.quantiles[0]
+        statistics = {
+            "magnitude_algorithm": magnitude.algorithm,
+            "magnitude_reduction": magnitude.reduction,
+            "statistics_algorithm": summary.algorithm,
+            "percentile_scope": "full_selection", "percentile_method": "linear",
+            "finite_count": summary.count, "passes": summary.passes,
+            "magnitude_bytes_sha256": summary.source_sha256,
+            "statistics_workspace_bytes": statistics_workspace_bytes,
+            "magnitude_workspace_bytes": magnitude.workspace_bytes,
+        }
     cfl_max, cfl_p99 = u_max * dt / dx, u_p99 * dt / dx
     detail: dict[str, Any] = {
         "velocity_field": vname,
@@ -982,6 +999,8 @@ def check_cfl(
         "cfl_p99": cfl_p99,
         "regime": "ok",
     }
+    if statistics:
+        detail["statistics"] = statistics
     status: Status = "pass"
     if not math.isfinite(cfl_p99):
         return CheckResult(name, "skip", {**detail, "reason": "non-finite velocity"})
@@ -1708,7 +1727,7 @@ def transient_sample_pass(
     stationarity = check_stationarity(scans)
     spectra, spectrum_series = check_spectra(info, scans)
     subsampling = check_temporal_subsampling(scans, n_steps)
-    cfl = check_cfl(info, scans, times)
+    cfl = check_cfl(info, scans, times, statistics_workspace_bytes=statistics_workspace_bytes)
     checks += [continuity, cfl, stationarity, spectra, check_conservation(scans), subsampling]
     for c in checks:
         c.detail = _clean(c.detail)

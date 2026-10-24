@@ -544,7 +544,7 @@ failure. Mean/std reduction semantics are versioned by `prep.quality.check` 1.3.
 retain full-selection linear semantics. Original data and physical units are not rewritten.
 
 These changes do not bound every quality stage: steady-surface mesh statistics, signal
-normalization, static-velocity CFL percentiles, mesh connectivity and FFT workspace still
+normalization, mesh connectivity and FFT workspace still
 have separate materialization requirements. Reader/native cache allowances remain additional
 to numerical workspace. Exact bounded percentiles may cost additional reads; choose and
 measure the reader/cache policy for the actual immutable dataset revision.
@@ -555,3 +555,13 @@ on `prep.quality.check` to change that allowance (minimum 4 MiB). It applies per
 in addition to read buffers and native caches. Increasing it can reduce the number of
 passes without changing the scientific results in the same runtime. Reports retain the
 workspace and pass count actually used by each worker, even when merged elsewhere.
+
+Static and steady velocity CFL now reads magnitudes lazily through ArrayRoute and calculates
+the full-selection speed p99 within that statistics allowance. An additional 8 MiB transform
+workspace and 8 MiB derived-reader allowance apply. The report records magnitude/statistics
+algorithms, pass count and a hash of the magnitude bytes (not the original vector bytes).
+Float64 sources use channel-order `hypot` to avoid squaring overflow/underflow; smaller
+numeric source types use float64 square/sum/square-root, which is safe for their finite range.
+The chosen reduction is recorded. Float64 results can differ in last bits. This change
+is versioned by `prep.quality.check` 1.4.0. Time-dependent velocity CFL continues to use
+probes for p99 and full scanned-frame maxima; the two percentile scopes remain distinct.
