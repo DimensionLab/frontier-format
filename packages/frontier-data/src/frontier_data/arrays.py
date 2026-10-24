@@ -27,10 +27,12 @@ from __future__ import annotations
 
 import json
 import math
+import operator
 import shutil
 import time as _time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,7 @@ import numpy as np
 from arrayroute.layout import GridLayoutPolicy
 from arrayroute.reader import ArrayReader, ReadStats
 from arrayroute.session import LocalReadSession
+from arrayroute.transfer import BlockArray, copy_blocks
 from frontier_data.dataset import (
     CHUNK_ROWS,
     FORMAT_MINOR,
@@ -51,6 +54,7 @@ from frontier_data.dataset import (
     SampleEntry,
     SampleMeta,
     TimeInfo,
+    _compressors,
     _write_array,
     _write_mesh_group,
     fields_of,
@@ -194,7 +198,10 @@ def _put(group: Any, name: str, data: np.ndarray, dims: list[str], steps_per_chu
 
 
 def _static_dims(
-    name: str, a: np.ndarray, sizes: Mapping[str, int], grid_shape: tuple[int, ...] | None
+    name: str,
+    a: np.ndarray | BlockArray,
+    sizes: Mapping[str, int],
+    grid_shape: tuple[int, ...] | None,
 ) -> list[str]:
     if grid_shape is not None:
         nd = len(grid_shape)
@@ -626,18 +633,73 @@ def write_points_sample(
     )
 
 
+
+def _write_grid_array(
+    group: Any,
+    name: str,
+    source: BlockArray,
+    *,
+    dims: list[str],
+    spatial_axes: tuple[int, ...],
+    time_axis: int | None,
+    steps_per_chunk: int,
+    policy: GridLayoutPolicy | None,
+    buffer_bytes: int,
+    dtype: Any = np.float32,
+    cancelled: Callable[[], bool] | None = None,
+) -> None:
+    target = np.dtype(dtype)
+    budget = operator.index(buffer_bytes)
+    allowance = budget * target.itemsize // (source.dtype.itemsize + target.itemsize)
+    if allowance < target.itemsize:
+        raise MemoryError("Grid write buffer cannot hold one source and destination element")
+    policy = policy or GridLayoutPolicy()
+    policy = replace(
+        policy,
+        chunk_bytes=min(policy.chunk_bytes, allowance),
+        shard_bytes=min(policy.shard_bytes, allowance),
+    )
+    layout = policy.plan(
+        source.shape,
+        itemsize=target.itemsize,
+        spatial_axes=spatial_axes,
+        time_axis=time_axis,
+        steps_per_chunk=steps_per_chunk,
+    )
+    sub, leaf = _leaf(group, name)
+    arr = sub.create_array(
+        leaf,
+        shape=source.shape,
+        dtype=target,
+        chunks=layout.chunks,
+        shards=layout.shards,
+        compressors=_compressors(),
+        chunk_key_encoding={"name": "default", "configuration": {"separator": "."}},
+    )
+    copy_blocks(
+        source,
+        lambda region, value: arr.__setitem__(region, value),
+        block_shape=layout.shards or layout.chunks,
+        dtype=target,
+        buffer_bytes=budget,
+        cancelled=cancelled,
+    )
+    arr.attrs["dims"] = dims
+
+
 def write_grid_sample(
     root: str | Path,
     sample_id: str,
     *,
-    fields: Mapping[str, np.ndarray],
+    fields: Mapping[str, np.ndarray | BlockArray],
     times: np.ndarray | Sequence[float] | None = None,
     spacing: Sequence[float] | None = None,
     origin: Sequence[float] | None = None,
     coords: Mapping[str, np.ndarray] | None = None,
     boundary_conditions: Mapping[str, Any] | None = None,
-    static: ArrayMap = None,
+    static: Mapping[str, np.ndarray | BlockArray] | None = None,
     signals: ArrayMap = None,
+    static_dtypes: Mapping[str, Any] | None = None,
     location: str = "node",
     ndim: int | None = None,
     meta: MetaLike = None,
@@ -650,6 +712,8 @@ def write_grid_sample(
     steps_per_chunk: int = 1,
     storage_layout: GridLayoutPolicy | None = None,
     attrs: Mapping[str, Any] | None = None,
+    write_buffer_bytes: int = 64 << 20,
+    cancelled: Callable[[], bool] | None = None,
 ) -> SampleEntry:
     """Write a regular-grid sample to ``samples/<id>/grid.zarr``.
 
@@ -665,6 +729,11 @@ def write_grid_sample(
     ``GridLayoutPolicy`` to tune the spatial edges and decoded-byte limits. The temporal
     ``steps_per_chunk`` is an upper bound; byte limits take precedence. Existing stores
     are not rewritten. Field values still follow the dataset's float32 writer contract.
+    Fields and static grid arrays may be borrowed ``BlockArray`` sources. Writes visit one
+    shard at a time; ``write_buffer_bytes`` bounds returned blocks plus dtype conversion.
+    Source scratch, coordinates/signals, Zarr codec buffers and OS caches are additional.
+    ``static_dtypes`` explicitly overrides stored static-array dtypes.
+    Use a dataset publication transaction to keep a failed sample private.
     """
     t0 = _time.perf_counter()
     root = Path(root)
@@ -675,9 +744,9 @@ def write_grid_sample(
     for hint in (spacing, origin, coords):
         if ndim is None and hint is not None:
             ndim = len(hint)
-    first = np.asarray(next(iter(fields.values())))
+    first = BlockArray.from_array(next(iter(fields.values())))
     if ndim is None:
-        ndim = first.ndim - lead - 1
+        ndim = len(first.shape) - lead - 1
     if ndim not in (1, 2, 3):
         raise ValueError(f"grids have 1 to 3 space axes, got {ndim}")
     shape = tuple(int(s) for s in first.shape[lead : lead + ndim])
@@ -687,26 +756,28 @@ def write_grid_sample(
     fgroup = store.create_group("fields")
     infos: list[FieldInfo] = []
     for name, arr in fields.items():
-        a = np.asarray(arr).astype(np.float32, copy=False)
-        if a.ndim == lead + ndim:
-            a = a[..., None]
-        if a.ndim != lead + ndim + 1 or tuple(a.shape[lead : lead + ndim]) != shape:
-            raise ValueError(
-                f"grid field {name!r} has shape {a.shape}; expected "
-                f"{('T',) if lead else ()}+{shape}+(C,)"
-            )
+        a = BlockArray.from_array(arr)
+        if a.dtype.kind not in "biuf":
+            raise ValueError(f"grid field {name!r} must contain real numeric values")
+        if len(a.shape) == lead + ndim:
+            a = a.with_component_axis()
+        if len(a.shape) != lead + ndim + 1 or tuple(a.shape[lead : lead + ndim]) != shape:
+            raise ValueError(f"grid field {name!r} has shape {a.shape}; expected grid {shape}+(C,)")
         if lead and tt is not None and a.shape[0] != tt.size:
             raise ValueError(f"grid field {name!r} has {a.shape[0]} steps, times has {tt.size}")
         d = (["time"] if lead else []) + axes + ["component"]
-        layout = (storage_layout or GridLayoutPolicy()).plan(
-            a.shape,
-            itemsize=a.dtype.itemsize,
+        _write_grid_array(
+            fgroup,
+            name,
+            a,
+            dims=d,
             spatial_axes=tuple(range(lead, lead + ndim)),
             time_axis=0 if lead else None,
             steps_per_chunk=steps_per_chunk,
+            policy=storage_layout,
+            buffer_bytes=write_buffer_bytes,
+            cancelled=cancelled,
         )
-        sub, leaf = _leaf(fgroup, name)
-        _write_array(sub, leaf, a, dims=d, chunks=layout.chunks, shards=layout.shards)
         infos.append(
             FieldInfo(
                 name=name,
@@ -741,7 +812,35 @@ def write_grid_sample(
     )
     if location not in GRID_LOCATIONS:
         raise ValueError(f"grid location must be one of {GRID_LOCATIONS}, got {location!r}")
-    static_names = _write_static(store, static, {}, dims, grid_shape=shape)
+    static_names = []
+    if static:
+        sg = store.create_group("static")
+        for name, value in static.items():
+            source = BlockArray.from_array(value)
+            sd = (
+                list(dims[name]) if dims and name in dims else _static_dims(name, source, {}, shape)
+            )
+            if "time" in sd or len(sd) != len(source.shape):
+                raise ValueError(f"Static grid array {name!r} has invalid dimensions")
+            dtype = (
+                np.float32
+                if source.dtype.kind == "f"
+                else (np.uint8 if source.dtype.kind == "b" else source.dtype)
+            )
+            _write_grid_array(
+                sg,
+                name,
+                source,
+                dims=sd,
+                spatial_axes=tuple(range(min(ndim, source.ndim))),
+                time_axis=None,
+                steps_per_chunk=1,
+                policy=storage_layout,
+                buffer_bytes=write_buffer_bytes,
+                dtype=(static_dtypes or {}).get(name, dtype),
+                cancelled=cancelled,
+            )
+            static_names.append(name)
     _root_attrs(
         store,
         "grid",

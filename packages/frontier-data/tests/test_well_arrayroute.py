@@ -327,3 +327,55 @@ def test_published_quality_report_uses_final_location(tmp_path):
     assert ".arrayroute-" not in (ds.root / "quality/report.html").read_text()
     for path in ds.root.rglob("*.json"):
         assert ".arrayroute-" not in path.read_text(), path
+
+
+def test_deferred_conversion_preserves_broadcast_tensor_static_and_steps(tmp_path):
+    from frontier_data.ingest.the_well import convert_the_well
+
+    raw = tmp_path / "well.h5"
+    fixture(raw, compressed=True)
+    with h5py.File(raw, "a") as f:
+        ds = f.create_dataset("t0_fields/integer_mask", data=np.arange(5, dtype="i8"))
+        ds.attrs.update(sample_varying=False, time_varying=False, dim_varying=[False, True, False])
+    expected = list(read_well_file(raw, time_stride=3, max_steps=4))
+    result = convert_the_well(
+        {"train": [raw]},
+        tmp_path / "converted",
+        name="synthetic",
+        time_stride=3,
+        max_steps=4,
+        materialization_bytes=1024,
+        read_buffer_bytes=4096,
+        quality=False,
+    )
+    for i, sid in enumerate(result.sample_ids):
+        sample = result.sample(sid)
+        for name, value in expected[i]["fields"].items():
+            assert sample.field(name).tobytes() == value.tobytes()
+        for name, value in expected[i]["static"].items():
+            assert sample.static(name).dtype == value.dtype
+            assert sample.static(name).tobytes() == value.tobytes()
+        assert sample.times.tobytes() == expected[i]["times"].tobytes()
+        assert sample.meta.parameters == expected[i]["parameters"]
+
+
+def test_deferred_fields_need_open_owner_and_do_not_read_eagerly(tmp_path, monkeypatch):
+    path = tmp_path / "well.h5"
+    fixture(path)
+    original = HDF5Backend.read
+    reads = []
+
+    def read(self, selection):
+        reads.append(self._dataset.name)
+        return original(self, selection)
+
+    monkeypatch.setattr(HDF5Backend, "read", read)
+    reader = read_well_file(path, deferred=True, materialization_bytes=1)
+    trajectory = next(reader)
+    assert not any("/t0_fields/" in p or "/t2_fields/" in p for p in reads)
+    source = trajectory["fields"]["pressure"]
+    region = tuple(slice(0, 1) for _ in source.shape)
+    assert source.read(region).shape == (1, 1, 1, 1, 1)
+    reader.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        source.read(region)

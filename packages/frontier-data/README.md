@@ -473,3 +473,25 @@ python -m frontier_data versions diff my-dataset --a HEAD~1 --b HEAD \
 The old `max_elements` argument has been replaced by `percentile_samples`, clarifying that
 it never limits exact change counts. Version materialization still visits the referenced
 files, so this is a bounded numerical scan, not a constant-time metadata comparison.
+
+## Streaming grid ingestion
+
+`DatasetWriter.write_grid_sample` accepts NumPy arrays or deferred
+`arrayroute.transfer.BlockArray` sources for fields and static arrays. Fields retain the
+float32 storage contract. Static types keep the existing floating/bool/integer policy;
+`static_dtypes` can explicitly select different stored types. Names, units, coordinates,
+physical times and boundary conditions use the same sample schema.
+
+Grid writes transfer one storage shard at a time. `write_buffer_bytes` bounds the source
+block plus conversion buffer and constrains the output layout when necessary. Reader
+scratch, codec buffers, coordinates, global signals and OS caches are additional; it is not
+a whole-process memory ceiling. Call inside a dataset publication transaction so cancelled
+or failed output never appears as a completed dataset.
+
+The Well direct and Hub converters now consume deferred fields, including static masks and
+broadcast tensor fields. They no longer require a whole trajectory to fit in memory.
+`--materialization-mib` on Well ingestion now sets the per-block transfer allowance;
+`--read-buffer-mib` separately limits ArrayRoute reads. The low-level `read_well_file` API
+still materializes by default for callers requesting arrays; `deferred=True` returns borrowed
+sources that must be consumed before its iterator closes. Tensor components must fit together
+within a block. Optional quality/preparation stages have their own resource behavior.

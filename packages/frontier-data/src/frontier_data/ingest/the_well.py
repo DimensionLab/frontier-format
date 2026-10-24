@@ -35,6 +35,7 @@ from arrayroute.hdf5 import HDF5ReadSession
 from arrayroute.plan import plan, tiles
 from arrayroute.publication import staged_directory
 from arrayroute.reader import ArrayReader, ReadStats
+from arrayroute.transfer import BlockArray, Region
 from frontier_data.ingest.common import (
     ProgressFn,
     finish_dataset,
@@ -137,6 +138,71 @@ def _field_plan(ds: Any, traj: int, step_slice: slice, space: tuple[int, ...]):
     return tuple(selection), (*full, *tensor), expanded, time_varying
 
 
+
+def _deferred_field(
+    session: HDF5ReadSession,
+    source_path: str,
+    reader: ArrayReader | None,
+    selection: tuple,
+    expanded: tuple,
+    space: tuple[int, ...],
+    tv: bool,
+    cancelled: Callable[[], bool] | None,
+    stats: ReadStats | None,
+) -> BlockArray:
+    ds = session.metadata(source_path)
+    dtype = np.dtype(ds.dtype)
+    varying = (
+        [bool(x) for x in np.asarray(ds.attrs["dim_varying"]).reshape(-1)]
+        if "dim_varying" in ds.attrs
+        else [True] * len(space)
+    )
+    lead = int(tv)
+    sample_varying = _flag(ds, "sample_varying", True)
+    prefix = int(sample_varying) + lead
+    tensor = tuple(ds.shape[prefix + sum(varying) :])
+
+    def read(region: Region) -> np.ndarray:
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Well ingestion cancelled")
+        if region[-1].start != 0 or region[-1].stop != expanded[-1]:
+            raise ValueError("Well tensor components must fit together within a transfer block")
+        chosen = list(selection[: int(sample_varying)])
+        if tv:
+            base = selection[int(sample_varying)]
+            step = base.step or 1
+            chosen.append(
+                slice(
+                    (base.start or 0) + region[0].start * step,
+                    (base.start or 0) + region[0].stop * step,
+                    step,
+                )
+            )
+        chosen.extend(region[lead + i] for i, active in enumerate(varying) if active)
+        chosen.extend(slice(None) for _ in tensor)
+        block_shape = tuple(s.stop - s.start for s in region)
+        raw = (
+            session.read_scalar(source_path)
+            if reader is None
+            else _materialize(
+                reader,
+                tuple(chosen),
+                output_limit=math.prod(block_shape) * dtype.itemsize,
+                cancelled=cancelled,
+                stats=stats,
+            )
+        )
+        reshaped = (
+            *block_shape[:lead],
+            *(block_shape[lead + i] if active else 1 for i, active in enumerate(varying)),
+            *tensor,
+        )
+        view = np.broadcast_to(raw.reshape(reshaped), (*block_shape[:-1], *tensor))
+        return view.reshape(block_shape)
+
+    return BlockArray(expanded, dtype, read)
+
+
 def read_well_file(
     path: str | Path,
     *,
@@ -149,6 +215,7 @@ def read_well_file(
     materialization_bytes: int = 512 << 20,
     cancelled: Callable[[], bool] | None = None,
     read_stats: ReadStats | None = None,
+    deferred: bool = False,
 ) -> Generator[dict[str, Any], None, None]:
     """Yield selected trajectories with ArrayRoute payload reads.
 
@@ -156,7 +223,9 @@ def read_well_file(
     fields plus conservative native-to-float32 conversion/broadcast buffers per trajectory.
     Read buffers, coordinates/timestamps, native codec scratch and caller-retained earlier
     trajectories are additional. Sources must stay immutable while the iterator is open.
-    This is a bounded materializing API, not a streaming grid writer.
+    With ``deferred=True``, fields/static arrays are borrowed BlockArray sources instead;
+    consume them before closing the iterator. Their values are read only when the writer
+    requests a block. The materialization allowance applies only to materialized mode.
     """
     for label, value in (
         ("time_stride", time_stride),
@@ -281,7 +350,7 @@ def read_well_file(
                         else ds.dtype.itemsize
                     )
                     final_bytes = math.prod(expanded) * 4
-                    if retained + raw_bytes + final_bytes > materialization_bytes:
+                    if not deferred and retained + raw_bytes + final_bytes > materialization_bytes:
                         raise MemoryError(
                             f"{name}: selected trajectory exceeds materialization_bytes; "
                             "select fewer fields/steps or explicitly increase the allowance"
@@ -297,10 +366,15 @@ def read_well_file(
                     retained += final_bytes
             if fields is not None and set(fields) - seen:
                 raise ValueError(f"Unknown Well fields: {sorted(set(fields) - seen)}")
-            out_fields: dict[str, np.ndarray] = {}
-            static: dict[str, np.ndarray] = {}
+            out_fields: dict[str, Any] = {}
+            static: dict[str, Any] = {}
             for name, source_path, reader, selection, reshaped, expanded, tv in plans:
                 check_cancel()
+                if deferred:
+                    (out_fields if tv else static)[name] = _deferred_field(
+                        session, source_path, reader, selection, expanded, space, tv,
+                        cancelled, read_stats)
+                    continue
                 arr = (
                     session.read_scalar(source_path)
                     if reader is None
@@ -423,6 +497,7 @@ def convert_the_well(
                     hdf5_strategy=hdf5_strategy,
                     materialization_bytes=materialization_bytes,
                     cancelled=cancelled,
+                    deferred=True,
                 )
             ) as reader:
                 for traj in reader:
@@ -442,7 +517,10 @@ def convert_the_well(
                     writer.write_grid_sample(
                         sid,
                         fields=traj["fields"],
+                        write_buffer_bytes=materialization_bytes,
+                        cancelled=cancelled,
                         static=traj["static"] or None,
+                        static_dtypes={key: "float32" for key in traj["static"]},
                         times=traj["times"],
                         coords=traj["coords"],
                         boundary_conditions=traj["boundary_conditions"],
