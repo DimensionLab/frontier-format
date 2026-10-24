@@ -149,7 +149,16 @@ def write_transient_prediction(
             t_index if t_index is not None else np.arange(len(times)), dtype=np.int64
         ),
     }
+    if arrays["t_index"].shape != times.shape:
+        raise ValueError("t_index must match the time vector")
     if ensemble is not None:
+        if set(ensemble) != set(names):
+            raise ValueError("Ensemble fields must match prediction fields")
+        for name in names:
+            if ensemble[name].ndim != p[name].ndim + 1 or ensemble[name].shape[1:] != p[name].shape:
+                raise ValueError(f"{name}: ensemble must have shape (members, *field.shape)")
+            if ensemble[name].shape[0] < 1:
+                raise ValueError(f"{name}: ensemble must contain at least one member")
         arrays["ensemble"] = _stack({k: ensemble[k] for k in names})
     if points is not None:
         arrays["points"] = np.asarray(points, dtype=np.float32)
@@ -157,6 +166,8 @@ def write_transient_prediction(
         arrays["spacing"] = np.asarray(spacing, dtype=np.float64)
     np.savez_compressed(out_dir / f"{sample_id}.npz", **arrays)
     meta = {"id": sample_id, "kind": kind, "n_steps": int(len(times)), **dict(info or {})}
+    if ensemble is not None:
+        meta["ensemble_members"] = {name: int(ensemble[name].shape[0]) for name in names}
     if masks is not None:
         np.savez_compressed(out_dir / f"{sample_id}.validity.npz", **masks)
         meta["validity_file"] = f"{sample_id}.validity.npz"
@@ -187,6 +198,8 @@ def write_transient_prediction(
             str(meta.get("time_units", "s")),
             field_units,
             masks,
+            ensemble,
+            arrays["t_index"],
         )
     return out_dir / f"{sample_id}.npz"
 
@@ -207,6 +220,8 @@ def _write_store(
     time_units: str = "s",
     field_units: Mapping[str, str] | None = None,
     validity: Mapping[str, np.ndarray] | None = None,
+    ensemble: Mapping[str, np.ndarray] | None = None,
+    t_index: np.ndarray | None = None,
 ) -> None:
     """Reuse the dataset writers in a scratch directory, then move the store into place."""
     from frontier_data.arrays import write_grid_sample, write_mesh_sample, write_points_sample
@@ -273,13 +288,23 @@ def _write_store(
         )
     else:
         raise ValueError("mesh / point_cloud predictions need `points`")
-    if units:
-        import zarr
+    import zarr
 
-        # Dataset writers put units in meta.json; prediction archives retain only the store.
-        store = zarr.open_group(str(tmp / "samples" / "s" / STORE_NAMES[kind]), mode="a")
-        for name, unit in units.items():
-            store[f"fields/{name}"].attrs["units"] = unit
+    # Dataset writers put units in meta.json; prediction archives retain only the store.
+    store = zarr.open_group(str(tmp / "samples" / "s" / STORE_NAMES[kind]), mode="a")
+    for name, unit in units.items():
+        store[f"fields/{name}"].attrs["units"] = unit
+    if t_index is not None:
+        store.create_array("t_index", data=t_index)
+    if ensemble is not None:
+        members = store.create_group("ensemble")
+        for name, values in ensemble.items():
+            array = members.create_array(
+                name, data=np.asarray(values, dtype=np.float32),
+                chunks=(1, *store[f"fields/{name}_pred"].chunks)
+            )
+            if field_units and name in field_units:
+                array.attrs["units"] = field_units[name]
     if path.exists():
         shutil.rmtree(path)
     shutil.move(str(tmp / "samples" / "s" / STORE_NAMES[kind]), str(path))
