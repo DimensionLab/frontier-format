@@ -12,6 +12,7 @@ from typing import Any, ClassVar, Literal
 import numpy as np
 from pydantic import Field
 
+from arrayroute.transfer import BlockArray
 from frontier_data.dataset import Manifest, _compressors
 from frontier_data.mesh import SurfaceMesh
 from frontier_prep import kernels
@@ -48,7 +49,7 @@ def convert_field_chunked(
     meta_extra: dict[str, Any] | None,
 ) -> tuple[int, int]:
     """Rewrite ``fields/<name>`` (or ``cell_fields/<name>``) as ``scale_block(x, factor)``
-    one slab at a time instead of materialising the array. The destination has the layout
+    one bounded grid shard or mesh slab at a time. The destination has the layout
     ``write_field`` would give it (same chunks, dtype, codec, attributes), so the chunk files
     and therefore the content hashes are identical to the whole-array path. Slabs are a
     multiple of the destination chunk rows (every destination chunk is written once) and at
@@ -61,6 +62,30 @@ def convert_field_chunked(
     src_dtype = np.dtype(src.dtype)
     out_dtype = np.float32 if (factor != 1.0 or src_dtype.kind == "f") else src_dtype
     proto = np.broadcast_to(np.zeros((), dtype=out_dtype), shape)  # shape/dtype only
+    if ed.kind == "grid" and any(d in ed.sample.axes for d in dims):
+        reader = ed.sample._reader(src)
+        n_read = n_written = 0
+
+        def converted(region):
+            nonlocal n_read, n_written
+            raw = reader.read(region)
+            result = scale_block(raw, factor)
+            n_read += raw.nbytes
+            n_written += result.nbytes
+            return result
+
+        ed._replace_grid_array(
+            name,
+            location,
+            BlockArray(shape, np.dtype(out_dtype), converted),
+            dims,
+        )
+        ed.mark_lods_stale()
+        ed._record_field(name, proto, location, dims, units, None, meta_extra)
+        ed.reopen()
+        ed.bytes_read += n_read
+        ed.bytes_written += n_written
+        return n_read, n_written
     chunks = SampleEditor._chunks(proto, dims)  # noqa: SLF001  (the write_field layout rule)
     tmp = ed.dir / f".{LOCATION_GROUP[location]}.{name.replace('/', '.')}.converting"
     if tmp.exists():
@@ -129,7 +154,7 @@ class ConvertParams(Params):
 @register
 class ConvertUnits(BaseOp):
     id = "prep.units.convert"
-    version = "1.0.0"
+    version = "1.1.0"
     category = "units"
     summary = (
         "Convert field units with dimensional checking (pint); reference quantities bridge "

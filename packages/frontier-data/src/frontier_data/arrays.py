@@ -17,7 +17,7 @@ One zarr v3 store per sample, named by kind (``docs/spec/dataset-format.md`` sec
 
 Every writer takes steady or transient arrays. Passing ``times`` (``(T,)``) makes the sample
 transient: every array in ``fields`` / ``cell_fields`` then has time as its first axis and is
-chunked ``steps_per_chunk`` (default one) steps per chunk, ``times`` is stored as float64 at the
+chunked along time (grid layouts pack small frames automatically), ``times`` is float64 at the
 group root and each array carries a ``dims`` attribute such as ``["time","point","component"]``.
 Inputs without a time axis (geometry masks, material maps, node types) go in ``static``.
 A moving mesh passes ``points_t (T,N,D)`` next to the reference ``points``.
@@ -38,6 +38,7 @@ from typing import Any
 
 import numpy as np
 
+from arrayroute.layout import ALGORITHM as GRID_LAYOUT_ALGORITHM
 from arrayroute.layout import GridLayoutPolicy
 from arrayroute.reader import ArrayReader, ReadStats
 from arrayroute.session import LocalReadSession
@@ -633,7 +634,6 @@ def write_points_sample(
     )
 
 
-
 def _write_grid_array(
     group: Any,
     name: str,
@@ -642,7 +642,7 @@ def _write_grid_array(
     dims: list[str],
     spatial_axes: tuple[int, ...],
     time_axis: int | None,
-    steps_per_chunk: int,
+    steps_per_chunk: int | None,
     policy: GridLayoutPolicy | None,
     buffer_bytes: int,
     dtype: Any = np.float32,
@@ -685,6 +685,13 @@ def _write_grid_array(
         cancelled=cancelled,
     )
     arr.attrs["dims"] = dims
+    arr.attrs["storage_layout"] = {
+        "algorithm": GRID_LAYOUT_ALGORITHM,
+        "requested_steps_per_chunk": steps_per_chunk,
+        "max_auto_time_steps": policy.max_time_steps,
+        "chunk_bytes_limit": policy.chunk_bytes,
+        "shard_bytes_limit": policy.shard_bytes,
+    }
 
 
 def write_grid_sample(
@@ -709,7 +716,7 @@ def write_grid_sample(
     time_units: str = "s",
     field_units: Mapping[str, str] | None = None,
     dims: Mapping[str, Sequence[str]] | None = None,
-    steps_per_chunk: int = 1,
+    steps_per_chunk: int | None = None,
     storage_layout: GridLayoutPolicy | None = None,
     attrs: Mapping[str, Any] | None = None,
     write_buffer_bytes: int = 64 << 20,
@@ -727,7 +734,9 @@ def write_grid_sample(
     attribute ``location``). ``signals`` are global time series ``(T[, C])``.
     Grid fields use bounded spatial chunks grouped into larger Zarr shards. Pass a
     ``GridLayoutPolicy`` to tune the spatial edges and decoded-byte limits. The temporal
-    ``steps_per_chunk`` is an upper bound; byte limits take precedence. Existing stores
+    ``steps_per_chunk`` is an upper bound; byte limits take precedence. By default, small
+    full frames share chunks up to the chunk-byte limit and 4096 time steps. Large frames
+    retain one step per chunk. Pass ``steps_per_chunk=1`` for isolated frames. Existing stores
     are not rewritten. Field values still follow the dataset's float32 writer contract.
     Fields and static grid arrays may be borrowed ``BlockArray`` sources. Writes visit one
     shard at a time; ``write_buffer_bytes`` bounds returned blocks plus dtype conversion.
@@ -808,7 +817,11 @@ def write_grid_sample(
             raise ValueError(f"coords[{ax!r}] has length {c.size}, grid axis has {n}")
         _write_array(cgroup, ax, c, dims=[ax], chunks=c.shape)
     infos += _write_signals(
-        store, signals, None if tt is None else int(tt.size), steps_per_chunk, field_units
+        store,
+        signals,
+        None if tt is None else int(tt.size),
+        1 if steps_per_chunk is None else steps_per_chunk,
+        field_units,
     )
     if location not in GRID_LOCATIONS:
         raise ValueError(f"grid location must be one of {GRID_LOCATIONS}, got {location!r}")

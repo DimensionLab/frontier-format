@@ -47,7 +47,7 @@ def test_grid_transient_roundtrip_and_lazy_steps(tmp_path: Path) -> None:
     s = Dataset(tmp_path).sample("a")
     assert s.kind == "grid" and s.is_transient and s.n_steps == 6
     assert s.dims("vorticity") == ["time", "x", "y", "component"]
-    assert s.array("vorticity").chunks[0] == 1  # one step per chunk
+    assert s.array("vorticity").chunks[0] == 6  # small frames share a bounded time chunk
     assert s.field("vorticity", t=2).shape == (16, 16, 1)
     assert s.field("velocity", t=slice(1, 4)).shape == (3, 16, 16, 2)
     assert s.field("velocity", t=[0, 5]).shape == (2, 16, 16, 2)

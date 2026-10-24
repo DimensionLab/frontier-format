@@ -71,3 +71,37 @@ def test_grid_layout_limits_decode_work_for_a_small_roi(tmp_path):
     plan = reader.plan({"time": 1, "x": slice(0, 16), "y": slice(0, 16), "z": slice(0, 16)})
     assert plan.output_bytes == 16**3 * 3 * 4
     assert plan.chunks_touched == 1
+
+
+@pytest.mark.parametrize("engine", ["zarr-python", "tensorstore", "zarrista"])
+@pytest.mark.parametrize("steps", [None, 1, 7])
+def test_small_grid_default_layout_preserves_bytes_units_and_sparse_reads(tmp_path, engine, steps):
+    if engine != "zarr-python":
+        pytest.importorskip(engine)
+    values = np.random.default_rng(15).normal(size=(37, 2, 3, 2)).astype("f4")
+    values.flat[:4] = np.array([0x80000000, 0x00000001, 0x7FC00011, 0xFF800000], "u4").view("f4")
+    times = np.arange(37, dtype="f8") * 0.125
+    writer = DatasetWriter(tmp_path, "small-grid-time-layout")
+    writer.write_grid_sample(
+        "case",
+        fields={"pressure": values},
+        times=times,
+        ndim=2,
+        field_units={"pressure": "Pa"},
+        steps_per_chunk=steps,
+        signals={"inflow": np.arange(37, dtype="f4")},
+    )
+    writer.finalize()
+    sample = Dataset(tmp_path).sample("case")
+    array = sample.array("pressure")
+    assert array.chunks[0] == (37 if steps is None else steps)
+    assert array.attrs["storage_layout"]["requested_steps_per_chunk"] == steps
+    assert array.attrs["storage_layout"]["algorithm"] == "bounded-spatiotemporal-grid-v2"
+    assert sample.times.tobytes() == times.tobytes()
+    reader = FieldReader(sample, "pressure", engine=engine)
+    assert reader.read({}).values.tobytes() == values.tobytes()
+    result = reader.read({"time": slice(3, 35, 7), "component": 1})
+    assert result.values.tobytes() == values[3:35:7, ..., 1].tobytes()
+    assert result.units == "Pa"
+    objects = list((tmp_path / "samples/case/grid.zarr/fields/pressure").glob("c.*"))
+    assert len(objects) == (37 + array.chunks[0] - 1) // array.chunks[0]

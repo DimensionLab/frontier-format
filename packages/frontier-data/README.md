@@ -60,6 +60,23 @@ u = s.field("vorticity", t=slice(10, 14))  # reads four steps
 assert validate_dataset("my-dataset").ok
 ```
 
+## Grid writes and preparation
+
+Grid fields use ArrayRoute's bounded spatial and temporal layout. Small complete frames
+share chunks of up to 512 KiB and 4096 time steps by default; large volumes retain one
+step per chunk with spatial chunks and shards. Pass `steps_per_chunk=1` when independent
+frame objects are required, or supply `storage_layout=GridLayoutPolicy(...)` to tune
+the limits. Each array records the policy version and effective byte limits alongside
+its actual Zarr layout. Existing datasets are not silently rewritten.
+
+Grid field rewrites and unit conversion in Frontier Prep use the same writer. Conversion
+reads through ArrayRoute and writes one bounded destination shard at a time. It preserves
+the numerical conversion order, physical times and declared units. Tests compare complete
+stored arrays, including metadata and compressed bytes, against the whole-array conversion.
+Temporary writes finish before replacing an existing field, so a source-read failure
+preserves it; this is not a crash-atomic multi-file transaction. The writer buffer does
+not include source-reader caches, numerical conversion scratch or caller-retained arrays.
+
 ## Read sessions and memory limits
 
 Sample fields, signals, times and geometry use ArrayRoute. `read_surface(...)` and

@@ -16,13 +16,15 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from frontier_data.arrays import Sample, _step_chunks, auto_steps_per_chunk
+from arrayroute.transfer import BlockArray
+from frontier_data.arrays import Sample, _step_chunks, _write_grid_array, auto_steps_per_chunk
 from frontier_data.dataset import (
     CHUNK_ROWS,
     STORE_NAMES,
@@ -201,6 +203,18 @@ class SampleEditor:
         if a.ndim != len(dims):
             raise ValueError(f"{name}: data ndim {a.ndim} does not match dims {dims}")
         a = np.ascontiguousarray(a)
+        grid_layout = (
+            self.kind == "grid" and chunks is None and any(d in self.sample.axes for d in dims)
+        )
+        if grid_layout:
+            unchanged = location == "static" or self._holds(name, location, a, dims)
+            self._replace_grid_array(name, location, BlockArray.from_array(a), dims)
+            self.bytes_written += a.nbytes
+            if not unchanged:
+                self.mark_lods_stale()
+            self._record_field(name, a, location, dims, units, description, meta_extra)
+            self.reopen()
+            return
         if chunks is None:
             chunks = self._chunks(a, dims)
         group = self._group(location)
@@ -224,6 +238,41 @@ class SampleEditor:
             self.mark_lods_stale()
         self._record_field(name, a, location, dims, units, description, meta_extra)
         self.reopen()
+
+    def _replace_grid_array(
+        self,
+        name: str,
+        location: str,
+        source: BlockArray,
+        dims: list[str],
+    ) -> None:
+        """Write complete bounded shards before replacing the old grid array."""
+        import zarr
+
+        spatial_axes = tuple(i for i, d in enumerate(dims) if d in self.sample.axes)
+        target = self.array_path(name, location)
+        with tempfile.TemporaryDirectory(prefix=".grid-rewrite-", dir=self.dir) as temporary:
+            root = Path(temporary)
+            group = zarr.open_group(str(root), mode="w")
+            _write_grid_array(
+                group,
+                "field",
+                source,
+                dims=dims,
+                spatial_axes=spatial_axes,
+                time_axis=dims.index("time") if "time" in dims else None,
+                steps_per_chunk=None,
+                policy=None,
+                buffer_bytes=64 << 20,
+                dtype=source.dtype,
+            )
+            parent = self._group(location)
+            for part in name.split("/")[:-1]:
+                parent = parent[part] if part in parent else parent.create_group(part)
+            if target.exists():
+                shutil.rmtree(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.rename(root / "field", target)
 
     def _holds(self, name: str, location: str, a: np.ndarray, dims: list[str]) -> bool:
         """The stored array already has exactly these values, dtype and dims. Only asked when
