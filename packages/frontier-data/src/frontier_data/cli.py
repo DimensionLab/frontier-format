@@ -615,6 +615,10 @@ def ingest_the_well_cmd(
     raw_dir: Annotated[Path | None, typer.Option(help="Raw download cache")] = None,
     time_stride: Annotated[int, typer.Option(help="Keep every n-th step")] = 1,
     max_steps: Annotated[int | None, typer.Option(help="Keep at most this many steps")] = None,
+    read_buffer_mib: Annotated[int, typer.Option(min=1, help="ArrayRoute temporary read MiB")] = 32,
+    materialization_mib: Annotated[
+        int, typer.Option(min=1, help="Selected trajectory output/conversion allowance in MiB")
+    ] = 512,
     max_gb: Annotated[
         float | None, typer.Option(help="Stop downloading after this many GB")
     ] = None,
@@ -641,6 +645,8 @@ def ingest_the_well_cmd(
         raw_dir=raw_dir,
         time_stride=time_stride,
         max_steps=max_steps,
+        read_buffer_bytes=read_buffer_mib << 20,
+        materialization_bytes=materialization_mib << 20,
         max_bytes=max_gb * 1e9 if max_gb else None,
         fields=[f.strip() for f in fields.split(",")] if fields else None,
         quality=quality,
