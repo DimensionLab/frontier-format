@@ -89,7 +89,7 @@ class CheckParams(Params):
 @register
 class QualityCheck(BaseOp):
     id = "prep.quality.check"
-    version = "1.0.0"
+    version = "1.0.1"
     category = "quality"
     summary = (
         "Run every frontier-data quality check (closure checks first) and record each result as an "
@@ -169,6 +169,7 @@ class QualityCheck(BaseOp):
                 write_html=params.html,
                 precomputed=precomputed,
                 mean_outlier_action=params.mean_outlier_action,
+                dataset_location=".",
             )
             manifest.quality = "quality/report.json"
         else:
@@ -179,6 +180,7 @@ class QualityCheck(BaseOp):
                     write_html=False,
                     precomputed=precomputed,
                     mean_outlier_action=params.mean_outlier_action,
+                    dataset_location=".",
                 )
         hashed = [o for o in outcomes if "frame0" in o.stats]
         groups: dict[str, list[str]] = {}

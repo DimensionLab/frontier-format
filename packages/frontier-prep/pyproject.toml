@@ -1,6 +1,6 @@
 [project]
 name = "frontier-prep"
-version = "0.9.3"
+version = "0.9.4"
 description = "DimensionLab Frontier – deterministic, auditable data-preparation operations for physics datasets"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -8,7 +8,7 @@ license = "Apache-2.0"
 dependencies = [
   "arrayroute>=0.1.36,<0.2",
   "frontier-plugins>=1,<2",
-  "frontier-data>=0.9.5,<0.10.0",
+  "frontier-data>=0.9.5,<0.10",
   "numpy>=1.26",
   "scipy>=1.13",
   "pydantic>=2.10",

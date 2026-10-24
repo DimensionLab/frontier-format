@@ -471,7 +471,7 @@ def test_quality_check_uses_the_worker_pool_and_reports_the_same(tmp_path: Path)
     assert not [x for x in a.assertions if x.check == "initial_frame_duplicates"]
     plain = tmp_path / "plain"
     shutil.copytree(src, plain)
-    run_quality(Dataset(plain), write_html=False)
+    run_quality(Dataset(plain), write_html=False, dataset_location=".")
     assert _report(plain) == _report(tmp_path / "w1")
 
 
