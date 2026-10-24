@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import closing
 from pathlib import Path
@@ -367,6 +368,7 @@ def convert_the_well(
     progress: ProgressFn | None = None,
     hub_id: str | None = None,
     id_with_split: bool = True,
+    resplit_seed: int | None = None,
 ) -> Any:
     """Convert local The Well HDF5 files into a ``frontier-dataset`` v1.1 at ``out``.
 
@@ -463,7 +465,26 @@ def convert_the_well(
             if progress:
                 progress(f"converted {path.name}", k + 1, total)
         strategy = {"name": "source", "note": "The Well's own train/valid/test files"}
-        finish_dataset(writer, splits, strategy=strategy, quality=quality, progress=progress)
+        ds = finish_dataset(
+            writer,
+            splits,
+            strategy=strategy,
+            quality=quality and resplit_seed is None,
+            progress=progress,
+        )
+        if resplit_seed is not None:
+            from frontier_data.splits import random_split
+
+            res = random_split(ds.sample_ids, seed=resplit_seed)
+            res.strategy["note"] = "re-split by trajectory (one sample = one whole trajectory)"
+            ds.manifest.splits = res.splits
+            ds.manifest.split_strategy = res.strategy
+            ds.manifest.split_families = {"random": res.as_family()}
+            ds.save_manifest()
+            if quality:
+                from frontier_data.quality import run_quality
+
+                run_quality(ds, progress=progress)
     return Dataset(out)
 
 
@@ -537,6 +558,8 @@ def ingest_the_well(
 
     from frontier_data.sources.huggingface import ProvenanceStore, resolve_url
 
+    if os.path.lexists(out):
+        raise FileExistsError(out)
     raw = Path(raw_dir) if raw_dir else Path("datasets/raw/the_well") / name
     raw.mkdir(parents=True, exist_ok=True)
     src = [s for s in ("train", "valid", "test") if s in source_splits]
@@ -617,22 +640,10 @@ def ingest_the_well(
         hdf5_strategy=hdf5_strategy,
         materialization_bytes=materialization_bytes,
         cancelled=cancelled,
-        quality=quality and not (resplit or len(src) < 3),
+        quality=quality,
         provenance_files=prov,
         progress=progress,
         id_with_split=not (resplit or len(src) < 3),
+        resplit_seed=seed if resplit or len(src) < 3 else None,
     )
-    if resplit or len(src) < 3:
-        from frontier_data.splits import random_split
-
-        res = random_split(ds.sample_ids, seed=seed)
-        res.strategy["note"] = "re-split by trajectory (one sample = one whole trajectory)"
-        ds.manifest.splits = res.splits
-        ds.manifest.split_strategy = res.strategy
-        ds.manifest.split_families = {"random": res.as_family()}
-        ds.save_manifest()
-        if quality:
-            from frontier_data.quality import run_quality
-
-            run_quality(ds, progress=progress)
     return ds

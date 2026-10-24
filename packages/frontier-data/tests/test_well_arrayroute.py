@@ -269,3 +269,46 @@ def test_quality_exception_never_publishes_manifest(tmp_path, monkeypatch):
         convert_the_well({"train": [source]}, output, name="test")
     assert not output.exists()
     assert not list(tmp_path.glob(".arrayroute-*.partial"))
+
+
+def test_ingestion_resplit_and_quality_stay_private(tmp_path, monkeypatch):
+    from frontier_data import quality
+    from frontier_data.ingest.the_well import ingest_the_well
+
+    raw = tmp_path / "raw"
+    source = raw / "data/train/source.hdf5"
+    source.parent.mkdir(parents=True)
+    fixture(source)
+    output = tmp_path / "dataset"
+
+    def fail(ds, **kwargs):
+        assert ds.manifest.split_strategy["name"] == "random"
+        assert not output.exists()
+        raise RuntimeError("resplit quality failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(quality, "run_quality", fail)
+        with pytest.raises(RuntimeError, match="resplit quality"):
+            ingest_the_well(
+                "test",
+                output,
+                raw_dir=raw,
+                download=False,
+                source_splits=["train"],
+                trajectories=2,
+                resplit=True,
+            )
+    assert not output.exists()
+    assert not list(tmp_path.glob(".arrayroute-*.partial"))
+    result = ingest_the_well(
+        "test",
+        output,
+        raw_dir=raw,
+        download=False,
+        source_splits=["train"],
+        trajectories=2,
+        resplit=True,
+        quality=False,
+    )
+    assert result.manifest.split_strategy["name"] == "random"
+    assert result.root == output
