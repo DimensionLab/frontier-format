@@ -267,3 +267,19 @@ def test_rollout_scoring_uses_stored_masks(tmp_path):
     result = PredictionView(tmp_path, 'mask').error_curves('u')
     np.testing.assert_array_equal(result['rmse'], [5, 5, 5])
     assert result['finite'].all()
+
+
+@pytest.mark.parametrize('engine', ['zarr-python', 'tensorstore', 'zarrista'])
+def test_long_prediction_scoring_with_small_numerical_allowance(tmp_path, engine, monkeypatch):
+    truth = np.random.default_rng(41).normal(size=(129, 17, 19, 1)).astype(np.float32)
+    write_transient_prediction(tmp_path, 'long', times=np.arange(129) * .1,
+                               pred={'p': truth + .125}, true={'p': truth},
+                               field_units={'p': 'Pa'})
+    (tmp_path / 'long.npz').unlink()
+    monkeypatch.setattr(np, 'load', lambda *a, **kw: pytest.fail('NPZ access'))
+    view = PredictionView(tmp_path, 'long', session=LocalReadSession(engine))
+    result = view.error_curves('p', buffer_bytes=4 << 20)
+    expected = np.sqrt(np.square((truth + .125).astype(float) - truth).sum(axis=(1, 2, 3))
+                       / (17 * 19))
+    np.testing.assert_allclose(result['rmse'], expected, rtol=1e-14)
+    assert view.units('p') == 'Pa'
