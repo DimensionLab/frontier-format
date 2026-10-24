@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -319,17 +319,32 @@ def list_transient_predictions(out_dir: str | Path) -> list[str]:
     return sorted(p.stem for p in out_dir.glob("*.npz"))
 
 
-def pack_prediction_store(out_dir: str | Path, sample_id: str) -> Path:
+def pack_prediction_store(
+    out_dir: str | Path,
+    sample_id: str,
+    *,
+    max_archive_bytes: int = 1 << 40,
+    buffer_bytes: int = 1 << 20,
+    cancelled: Callable[[], bool] | None = None,
+) -> Path:
     """Tar ``<sid>.zarr`` into ``<sid>.zarr.tar`` (uncompressed: the chunks already are; the
     archive's top-level directory is ``<sid>.zarr``). Upload it as the run artifact
-    ``predictions/<sid>.zarr.tar``."""
-    import tarfile
+    ``predictions/<sid>.zarr.tar``. Identical store paths/bytes produce identical archives
+    independent of file timestamps, permissions and ownership. The source store must stay
+    immutable while packing; a completed archive atomically replaces a previous archive.
+    Cancellation/failure preserves the previous archive. The default archive limit is
+    1 TiB and can be explicitly raised; copying/output share a bounded byte allowance."""
+    from arrayroute.archive import pack_directory
 
+    if not sample_id or sample_id in {".", ".."} or any(c in sample_id for c in "/\\\x00"):
+        raise ValueError("Prediction sample id must be a single safe path component")
     out_dir = Path(out_dir)
     store = out_dir / f"{sample_id}.zarr"
     if not store.is_dir():
         raise FileNotFoundError(store)
     dest = out_dir / f"{sample_id}.zarr.tar"
-    with tarfile.open(dest, "w") as tar:
-        tar.add(store, arcname=store.name)
+    pack_directory(
+        store, dest, archive_name=store.name, max_output_bytes=max_archive_bytes,
+        buffer_bytes=buffer_bytes, replace=True, cancelled=cancelled,
+    )
     return dest

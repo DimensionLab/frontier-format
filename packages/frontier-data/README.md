@@ -598,3 +598,18 @@ selection. Duplicates and requested order are preserved. Batches use at most hal
 reader allowance for output; planned reads use the remainder. This changes read grouping,
 not canonical reduction order, per-frame hashes or diagnostic values. Backend caches and
 retained report arrays remain separate from those allowances.
+
+## Reproducible prediction archives
+
+`pack_prediction_store(directory, sample_id)` now uses ArrayRoute's deterministic archive
+writer. The resulting `<sample_id>.zarr.tar` preserves every encoded store byte and remains
+readable by standard tar readers. File timestamps, permissions and ownership do not affect
+archive bytes. The store must remain immutable while packing; symlinks and special files
+are rejected. Invalid sample path components are rejected before accessing the store.
+
+Packing atomically replaces the previous archive only on success. A read failure,
+resource-limit failure or cancellation preserves that previous archive. Optional arguments
+are `max_archive_bytes` (default 1 TiB), `buffer_bytes` (default 1 MiB, covering copy/output
+buffers), and a `cancelled` callback. Python metadata and OS caches are additional memory.
+This does not make the earlier NPZ/JSON/Zarr prediction-generation steps transactional,
+nor does it make NPZ prediction reads lazy. Those remain separate integration work.
