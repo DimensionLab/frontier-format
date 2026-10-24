@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -33,6 +33,22 @@ class FieldResult:
 
 
 @dataclass
+class _AdapterLifetime:
+    release: Callable[[], None] | None
+    closed: bool = False
+
+    def check(self) -> None:
+        if self.closed:
+            raise RuntimeError("Data adapter reader is closed")
+
+    def close(self) -> None:
+        if not self.closed:
+            if self.release is not None:
+                self.release()
+            self.closed = True
+
+
+@dataclass
 class ArrayFieldReader:
     """Named scientific view over any ArrayRoute backend, including remote connectors.
 
@@ -46,6 +62,9 @@ class ArrayFieldReader:
     association: str
     snapshot_id: str | None = None
     retention_tag: str | None = None
+    adapter_info: dict[str, Any] | None = field(default=None, kw_only=True)
+    _lifetime: _AdapterLifetime | None = field(default=None, kw_only=True, repr=False)
+    _owns_backend: bool = field(default=False, kw_only=True, repr=False)
 
     @classmethod
     def from_plugin(
@@ -60,12 +79,35 @@ class ArrayFieldReader:
         snapshot id records identity; it does not make a mutable source immutable.
         The adapter owns its native caches; buffer_bytes bounds ArrayRoute reads.
         """
-        from frontier_plugins.data_adapters import load
+        from frontier_plugins.data_adapters import activate
 
-        factory = load(plugin, adapter, stage="read", device="cpu")
+        factory, provenance = activate(plugin, adapter, stage="read", device="cpu")
         backend = factory(source, **(options or {}))
-        reader = ArrayReader(backend, buffer_bytes=buffer_bytes)
-        return cls(reader, dimensions, units, association, snapshot_id)
+        lifetime = _AdapterLifetime(getattr(backend, "close", None))
+        try:
+            reader = ArrayReader(backend, buffer_bytes=buffer_bytes)
+            return cls(reader, dimensions, units, association, snapshot_id,
+                       adapter_info=provenance, _lifetime=lifetime, _owns_backend=True)
+        except BaseException:
+            lifetime.close()
+            raise
+
+    def close(self) -> None:
+        """Release a plugin-owned backend; borrowed sessions remain caller-owned.
+
+        Finish active stream/prefetch contexts before closing. Traced views borrow
+        the same lifetime and cannot continue reading after their owner closes.
+        """
+        if self._owns_backend and self._lifetime is not None:
+            self._lifetime.close()
+
+    def __enter__(self) -> ArrayFieldReader:
+        if self._lifetime is not None:
+            self._lifetime.check()
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        self.close()
 
     def with_access_trace(self, recorder: TraceRecorder, *, identity: str) -> ArrayFieldReader:
         """Observe this field's reads while preserving units, provenance and buffer limits."""
@@ -73,7 +115,8 @@ class ArrayFieldReader:
                              buffer_bytes=self.reader.buffer_bytes,
                              shared_budget=self.reader.shared_budget)
         return ArrayFieldReader(reader, self.dimensions, self.units, self.association,
-                                self.snapshot_id, self.retention_tag)
+                                self.snapshot_id, self.retention_tag,
+                                adapter_info=self.adapter_info, _lifetime=self._lifetime)
 
     def __post_init__(self) -> None:
         if (
@@ -86,6 +129,8 @@ class ArrayFieldReader:
             raise ValueError("Units and association must be declared; use '-' for unknown units")
 
     def selection(self, selectors: Mapping[str, int | slice]) -> tuple[int | slice, ...]:
+        if self._lifetime is not None:
+            self._lifetime.check()
         unknown = selectors.keys() - set(self.dimensions)
         if unknown:
             raise ValueError(f"Unknown dimensions {sorted(unknown)}; choose {self.dimensions}")
@@ -333,6 +378,7 @@ class FieldReader(ArrayFieldReader):
             raise ValueError("Requested engine differs from the shared read session")
         self.session = None
         self.adapter_info: dict[str, Any] | None = None
+        lifetime = None
         if adapter is None:
             self.session = session or LocalReadSession(
                 engine or "zarr-python", buffer_bytes=buffer_bytes
@@ -345,17 +391,29 @@ class FieldReader(ArrayFieldReader):
             factory, self.adapter_info = activate(*adapter, stage="read", device="cpu")
             backend = factory({"store": str(sample.store_path), "array_path": array.path},
                               **dict(adapter_options or {}))
-            if (backend.spec.shape != tuple(array.shape)
-                    or backend.dtype != array.dtype):
-                raise ValueError("Adapter array shape or dtype differs from source metadata")
-            reader = ArrayReader(backend, buffer_bytes=buffer_bytes)
+            lifetime = _AdapterLifetime(getattr(backend, "close", None))
+            try:
+                if (backend.spec.shape != tuple(array.shape)
+                        or backend.dtype != array.dtype):
+                    raise ValueError("Adapter array shape or dtype differs from source metadata")
+                reader = ArrayReader(backend, buffer_bytes=buffer_bytes)
+            except BaseException:
+                lifetime.close()
+                raise
             self.engine = "/".join(adapter)
-        super().__init__(
-            reader,
-            tuple(sample.dims(array_name, location, lod)),
-            info.units,
-            sample.location if location == "grid" else location,
-        )
+        try:
+            super().__init__(
+                reader,
+                tuple(sample.dims(array_name, location, lod)),
+                info.units,
+                sample.location if location == "grid" else location,
+                adapter_info=self.adapter_info, _lifetime=lifetime,
+                _owns_backend=lifetime is not None,
+            )
+        except BaseException:
+            if lifetime is not None:
+                lifetime.close()
+            raise
 
 
 def parse_selectors(items: list[str]) -> dict[str, int | slice]:

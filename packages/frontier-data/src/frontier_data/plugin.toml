@@ -2,7 +2,7 @@ schema = 1
 id = "frontier-data"
 kind = "data-adapter"
 name = "Frontier data engines"
-version = "0.9.22"
+version = "0.9.23"
 summary = "Bounded array selections and optional device transforms"
 licence = "Apache-2.0"
 maturity = "verified-synthetic"
@@ -45,3 +45,11 @@ devices = ["cpu", "cuda"]
 platforms = ["Linux", "Darwin", "Windows"]
 determinism = "fixed-runtime"
 requires = ["torch>=2.4"]
+
+[data_adapters.hdf5]
+summary = "Bounded reads of embedded HDF5 datasets with explicit file ownership"
+stages = ["read"]
+devices = ["cpu"]
+platforms = ["Linux", "Darwin", "Windows"]
+determinism = "exact"
+requires = ["h5py>=3.10,<4"]

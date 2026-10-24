@@ -715,14 +715,14 @@ compatibility failures without importing native engines.
 ```python
 from frontier_data.query import ArrayFieldReader
 
-field = ArrayFieldReader.from_plugin(
+with ArrayFieldReader.from_plugin(
     "frontier-data", "tensorstore",
     {"store": "simulation.zarr", "array_path": "pressure"},
     dimensions=("time", "point", "channel"),
     units="Pa", association="node", buffer_bytes=64 << 20,
     options={"tensorstore_threads": 4, "tensorstore_cache_bytes": 32 << 20},
-)
-selection = field.read_rows([2, 0, 2], selectors={"point": slice(0, 1000)})
+) as field:
+    selection = field.read_rows([2, 0, 2], selectors={"point": slice(0, 1000)})
 ```
 
 Dimensions and physical units must come from the verified source schema. Row order
@@ -758,3 +758,52 @@ built-in engine policy or a tuning profile for a different implementation.
 This path covers discovery, field preview and region export in the SDK and CLI.
 Selecting an adapter here does not yet change the native canvas or a training
 job's configured reader.
+
+### Reading an existing HDF5 simulation without converting the whole file
+
+Install `frontier-data[ingest]` for the HDF5 dependency. The `frontier-data/hdf5`
+adapter opens a local embedded dataset through ArrayRoute's HDF5 session. It
+supports fixed-size contiguous and chunked arrays. External/soft links, virtual
+arrays, external raw payloads, variable-length values and reference dtypes are
+rejected. This storage policy does not sandbox HDF5 or native codec plugins.
+
+```bash
+frontier-data query-array ./flow.h5 velocity --adapter frontier-data/hdf5 \
+  --dimension time --dimension x --dimension y --dimension z --dimension channel \
+  --units m/s --association node --select time=20 --select x=10:90 \
+  --budget-mib 16 --out velocity-region.npy > velocity-region.receipt.json
+```
+
+Omit `--out` to inspect the read plan. Dimensions, units and association must come
+from the simulation's schema; this command records the declarations without
+inferring them, converting units or certifying physical correctness. It works
+with the local Zarr adapters as well. Keep the source unchanged during the read;
+this command does not establish immutable source identity.
+
+```python
+from frontier_data.query import ArrayFieldReader
+
+with ArrayFieldReader.from_plugin(
+    "frontier-data", "hdf5",
+    {"store": "flow.h5", "array_path": "velocity"},
+    dimensions=("case", "time", "x", "channel"),
+    units="m/s", association="node", buffer_bytes=64 << 20,
+) as field:
+    batch = field.read_rows([5, 1, 5], selectors={"time": 10})
+    # The owned NumPy values can be passed to a model after the file closes.
+    values = batch.values
+```
+
+Use the reader as a context manager or call `close()` explicitly. Plugin-owned
+handles close on context exit, including exceptions and cancellation; invalid
+field metadata also closes an already opened backend. Read operations fail after
+closing. Traced views borrow the owner's lifetime and retain its adapter
+provenance. Closing a traced view does not close the owner. Existing explicitly
+supplied sessions remain caller-owned.
+
+Finish stream/prefetch contexts before closing the reader. Open one HDF5 adapter
+inside each spawned worker; native handles cannot be pickled or used after fork.
+HDF5 calls serialize through h5py's interpreter lock, so CPU thread count alone
+is not a guarantee of parallel I/O. Parallel model computation can overlap reads,
+but distributed/HPC HDF5 is a separate integration. Read buffers exclude HDF5
+metadata and codec scratch; the session disables the raw chunk cache.

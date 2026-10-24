@@ -57,7 +57,54 @@ def data_adapters_command(
             "Installed; runtime untested" if row["available"] else "; ".join(row["problems"]),
         )
     console.print(table)
-    typer.echo("Use a read adapter with query-field --adapter plugin/adapter.")
+    typer.echo("Use query-field for a Frontier dataset or query-array for a source array.")
+
+
+def _adapter_id(value: str) -> tuple[str, str]:
+    parts = value.split("/")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError("Use plugin/adapter from frontier-data data-adapters")
+    return parts[0], parts[1]
+
+
+@app.command("query-array")
+def query_array(
+    store: Path,
+    array_path: str,
+    adapter: Annotated[str, typer.Option(help="Installed read adapter, e.g. frontier-data/hdf5")],
+    dimension: Annotated[list[str], typer.Option(help="One name per axis, in storage order")],
+    units: Annotated[str, typer.Option(help="Declared field units, e.g. Pa or m/s")],
+    association: Annotated[str, typer.Option(help="Declared association, e.g. node or cell")],
+    select: Annotated[list[str] | None, typer.Option(help="Named index/slice")] = None,
+    budget_mib: Annotated[int, typer.Option(min=1)] = 128,
+    max_output_mib: Annotated[int, typer.Option(min=1)] = 1024,
+    out: Annotated[Path | None, typer.Option(help="Write .npy; omit to inspect read costs")] = None,
+) -> None:
+    """Select an immutable local source array before importing a complete dataset.
+
+    Supply dimensions, units and association from the source's scientific schema.
+    These declarations are recorded, not inferred or converted. Keep the source
+    unchanged while reading. This command does not create a snapshot.
+    """
+    from frontier_data.query import ArrayFieldReader, parse_selectors
+
+    try:
+        plugin, name = _adapter_id(adapter)
+        source = {"store": str(store.resolve()), "array_path": array_path}
+        with ArrayFieldReader.from_plugin(
+            plugin, name, source, dimensions=tuple(dimension), units=units,
+            association=association, buffer_bytes=budget_mib << 20,
+        ) as reader:
+            _query_field_output(
+                reader, parse_selectors(select or []), None, array_path, adapter,
+                out, max_output_mib,
+                {"kind": "local-array", **source, "adapter": reader.adapter_info,
+                 "scientific_metadata": "caller-declared; not inferred or converted"},
+            )
+    except (
+        ValueError, KeyError, OSError, ImportError, MemoryError, TypeError, RuntimeError
+    ) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 @app.command("catalog-build")
@@ -166,13 +213,10 @@ def query_field(
             return
         selected_adapter = None
         if adapter is not None:
-            parts = adapter.split("/")
-            if len(parts) != 2 or not all(parts):
-                raise ValueError("Use plugin/adapter from frontier-data data-adapters")
+            selected_adapter = _adapter_id(adapter)
             if (engine != "zarr-python" or range_policy is not None
                     or read_strategy != "native" or gather_workers != 4):
                 raise ValueError("Use --adapter without built-in engine, range or gather settings")
-            selected_adapter = (parts[0], parts[1])
         policy = None
         if range_policy is not None:
             with range_policy.open('rb') as handle:
@@ -373,28 +417,29 @@ def _query_field_output(
 
     if (plan_workers is None) != (total_read_budget_mib is None):
         raise ValueError("Provide both --plan-workers and --total-read-budget-mib")
-    result = {
-        **reader.describe(selectors),
-        "sample": sample,
-        "field": field,
-        "engine": engine,
-        "source": source,
-    }
-    if plan_workers is not None and total_read_budget_mib is not None:
-        result["concurrency"] = asdict(reader.plan_concurrency(
-            selectors, total_buffer_bytes=total_read_budget_mib << 20, max_workers=plan_workers,
-        ))
-    if out is not None:
-        stats = ReadStats()
-        save_npy(
-            reader.reader,
-            reader.selection(selectors),
-            out,
-            max_output_bytes=max_output_mib << 20,
-            stats=stats,
-        )
-        result["read"] = asdict(stats)
-    typer.echo(json.dumps(result, indent=2))
+    with reader:
+        result = {
+            **reader.describe(selectors),
+            "sample": sample,
+            "field": field,
+            "engine": engine,
+            "source": source,
+        }
+        if plan_workers is not None and total_read_budget_mib is not None:
+            result["concurrency"] = asdict(reader.plan_concurrency(
+                selectors, total_buffer_bytes=total_read_budget_mib << 20, max_workers=plan_workers,
+            ))
+        if out is not None:
+            stats = ReadStats()
+            save_npy(
+                reader.reader,
+                reader.selection(selectors),
+                out,
+                max_output_bytes=max_output_mib << 20,
+                stats=stats,
+            )
+            result["read"] = asdict(stats)
+        typer.echo(json.dumps(result, indent=2))
 
 
 @app.command("query-snapshot")

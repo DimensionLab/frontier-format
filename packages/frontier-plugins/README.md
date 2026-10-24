@@ -208,6 +208,15 @@ has its operation-specific documented parameters; Frontier's `normalize` factory
 accepts `mean`, `scale` and `device` and returns a callable for float32 tensors.
 Cache the selected factory/operation outside per-sample loops.
 
+Read backends that own native resources expose an idempotent `close()` method.
+The scientific reader in `frontier-data>=0.9.23` manages that lifetime through a
+context manager, closes on metadata-validation failure, and records the activated
+provider. The factory must release resources if construction itself fails.
+Borrowed views share the owner's validity but do not close the owner. Callers
+finish active streams/prefetch contexts before closure and reopen process-local
+handles in each worker. An adapter must document additional concurrency limits.
+A resource-free backend does not need a `close()` method.
+
 With `frontier-plugins>=1.4`, consumers retain provenance with `activate(...)`
 instead of `load(...)`. It
 returns `(factory, receipt)`, recording the plugin and adapter ids, distribution
