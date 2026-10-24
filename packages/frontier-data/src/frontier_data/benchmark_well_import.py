@@ -89,6 +89,11 @@ def main():
         "--baseline", type=Path, required=True, help="Archived pre-migration the_well.py"
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--baseline-description",
+        default="Baseline reads skipped steps, so this is avoided work, not equal-I/O throughput.",
+        help="Describe the archived baseline's actual work for this experiment",
+    )
     parser.add_argument("--worker", choices=["baseline", "arrayroute", "arrayroute-native"])
     parser.add_argument("--operation", choices=["read", "convert"])
     parser.add_argument("--file", type=Path)
@@ -171,8 +176,8 @@ def main():
         baseline_sha256=hashlib.sha256(args.baseline.read_bytes()).hexdigest(),
         scope="Synthetic local 3D vectors, not simulated CFD. Eight of 128 steps, "
         "stride eight. Deterministic shuffled fresh-process trials; OS caches "
-        "uncontrolled. Both methods return the same selected values. Baseline "
-        "reads skipped steps, so this is avoided work, not equal-I/O throughput.",
+        "uncontrolled. Both methods return the same selected values. "
+        + args.baseline_description,
     )
     (args.output / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     source.unlink()

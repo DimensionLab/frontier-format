@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable, Generator, Mapping, Sequence
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Literal
 
@@ -31,6 +32,7 @@ import numpy as np
 
 from arrayroute.hdf5 import HDF5ReadSession
 from arrayroute.plan import plan, tiles
+from arrayroute.publication import staged_directory
 from arrayroute.reader import ArrayReader, ReadStats
 from frontier_data.ingest.common import (
     ProgressFn,
@@ -373,88 +375,96 @@ def convert_the_well(
     from that split and ``per_file`` the number taken from each file (to spread a small budget
     over the parameter values). Sample ids are ``<split>_<file suffix>_<index>``; pass
     ``id_with_split=False`` when the caller re-splits afterwards. Returns the opened dataset.
+    The destination must not exist. Conversion and quality checks run in private staging;
+    publication is atomic and never replaces an existing directory. An exception cleans
+    staging; abrupt process termination may leave a hidden partial directory.
     """
-    from frontier_data.dataset import DatasetWriter, Provenance, RawFileRecord
+    from frontier_data.dataset import Dataset, DatasetWriter, Provenance, RawFileRecord
 
-    writer = DatasetWriter(
-        out,
-        name=name,
-        source={
-            "kind": "the_well",
-            "repo": f"{HF_ORG}/{name}",
-            "time_stride": time_stride,
-            "max_steps": max_steps,
-        },
-        domain=DOMAINS.get(name, "cfd"),
-        license=LICENSE,
-        citation=CITATION,
-        hub_id=hub_id or f"the-well-{name.replace('_', '-')}",
-        time_units="simulation",
-    )
-    splits: dict[str, list[str]] = {"train": [], "val": [], "test": []}
-    counters: dict[str, int] = {}
-    paths = [(SPLIT_MAP.get(s, s), Path(p)) for s, ps in files.items() for p in ps]
-    stems = [p.stem for _, p in paths]
-    common = _common_prefix(stems)
-    total = len(paths)
-    for k, (split, path) in enumerate(sorted(paths, key=lambda sp: (sp[0], sp[1].name))):
-        cap = (trajectories or {}).get(split)
-        left = None if cap is None else cap - len(splits[split])
-        if left is not None and left <= 0:
-            continue
-        n_take = min(x for x in (left, per_file, 10**9) if x is not None)
-        short = safe_id(path.stem[len(common) :]) or f"f{k}"
-        for traj in read_well_file(
-            path,
-            max_trajectories=n_take,
-            fields=fields,
-            time_stride=time_stride,
-            max_steps=max_steps,
-            read_buffer_bytes=read_buffer_bytes,
-            hdf5_strategy=hdf5_strategy,
-            materialization_bytes=materialization_bytes,
-            cancelled=cancelled,
-        ):
-            if id_with_split:
-                sid = f"{split}_{short}_{traj['index']:03d}"
-            else:
-                counters[short] = counters.get(short, -1) + 1
-                sid = f"{short}_{counters[short]:03d}"
-            rec = (provenance_files or {}).get(str(path))
-            prov = Provenance(
-                source=f"huggingface:{HF_ORG}/{name}",
-                license=LICENSE,
-                citation=CITATION,
-                files=[RawFileRecord(role="hdf5", **rec)] if rec else [],
-            )
-            attrs = traj["attrs"]
-            writer.write_grid_sample(
-                sid,
-                fields=traj["fields"],
-                static=traj["static"] or None,
-                times=traj["times"],
-                coords=traj["coords"],
-                boundary_conditions=traj["boundary_conditions"],
-                parameters=traj["parameters"],
-                meta={
-                    "solver": "the_well",
-                    "physics": str(attrs.get("dataset_name", name)),
-                    "fidelity": "dns",
-                    "provenance": prov,
-                    "extra": {
-                        "source_file": path.name,
-                        "source_split": split,
-                        "trajectory_index": traj["index"],
-                        "grid_type": attrs.get("grid_type"),
-                        "time_stride": time_stride,
-                    },
-                },
-            )
-            splits[split].append(sid)
-        if progress:
-            progress(f"converted {path.name}", k + 1, total)
-    strategy = {"name": "source", "note": "The Well's own train/valid/test files"}
-    return finish_dataset(writer, splits, strategy=strategy, quality=quality, progress=progress)
+    with staged_directory(out, cancelled=cancelled) as stage:
+        writer = DatasetWriter(
+            stage,
+            name=name,
+            source={
+                "kind": "the_well",
+                "repo": f"{HF_ORG}/{name}",
+                "time_stride": time_stride,
+                "max_steps": max_steps,
+            },
+            domain=DOMAINS.get(name, "cfd"),
+            license=LICENSE,
+            citation=CITATION,
+            hub_id=hub_id or f"the-well-{name.replace('_', '-')}",
+            time_units="simulation",
+        )
+        splits: dict[str, list[str]] = {"train": [], "val": [], "test": []}
+        counters: dict[str, int] = {}
+        paths = [(SPLIT_MAP.get(s, s), Path(p)) for s, ps in files.items() for p in ps]
+        stems = [p.stem for _, p in paths]
+        common = _common_prefix(stems)
+        total = len(paths)
+        for k, (split, path) in enumerate(sorted(paths, key=lambda sp: (sp[0], sp[1].name))):
+            cap = (trajectories or {}).get(split)
+            left = None if cap is None else cap - len(splits[split])
+            if left is not None and left <= 0:
+                continue
+            n_take = min(x for x in (left, per_file, 10**9) if x is not None)
+            short = safe_id(path.stem[len(common) :]) or f"f{k}"
+            with closing(
+                read_well_file(
+                    path,
+                    max_trajectories=n_take,
+                    fields=fields,
+                    time_stride=time_stride,
+                    max_steps=max_steps,
+                    read_buffer_bytes=read_buffer_bytes,
+                    hdf5_strategy=hdf5_strategy,
+                    materialization_bytes=materialization_bytes,
+                    cancelled=cancelled,
+                )
+            ) as reader:
+                for traj in reader:
+                    if id_with_split:
+                        sid = f"{split}_{short}_{traj['index']:03d}"
+                    else:
+                        counters[short] = counters.get(short, -1) + 1
+                        sid = f"{short}_{counters[short]:03d}"
+                    rec = (provenance_files or {}).get(str(path))
+                    prov = Provenance(
+                        source=f"huggingface:{HF_ORG}/{name}",
+                        license=LICENSE,
+                        citation=CITATION,
+                        files=[RawFileRecord(role="hdf5", **rec)] if rec else [],
+                    )
+                    attrs = traj["attrs"]
+                    writer.write_grid_sample(
+                        sid,
+                        fields=traj["fields"],
+                        static=traj["static"] or None,
+                        times=traj["times"],
+                        coords=traj["coords"],
+                        boundary_conditions=traj["boundary_conditions"],
+                        parameters=traj["parameters"],
+                        meta={
+                            "solver": "the_well",
+                            "physics": str(attrs.get("dataset_name", name)),
+                            "fidelity": "dns",
+                            "provenance": prov,
+                            "extra": {
+                                "source_file": path.name,
+                                "source_split": split,
+                                "trajectory_index": traj["index"],
+                                "grid_type": attrs.get("grid_type"),
+                                "time_stride": time_stride,
+                            },
+                        },
+                    )
+                    splits[split].append(sid)
+            if progress:
+                progress(f"converted {path.name}", k + 1, total)
+        strategy = {"name": "source", "note": "The Well's own train/valid/test files"}
+        finish_dataset(writer, splits, strategy=strategy, quality=quality, progress=progress)
+    return Dataset(out)
 
 
 def _common_prefix(stems: Sequence[str]) -> str:

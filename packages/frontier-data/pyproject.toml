@@ -1,6 +1,6 @@
 [project]
 name = "frontier-data"
-version = "0.9.4"
+version = "0.9.5"
 description = "DimensionLab Frontier – dataset ingestion, quality and splits for CFD surrogate training"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -22,12 +22,12 @@ dependencies = [
 
 [project.optional-dependencies]
 # The Well ingest reads HDF5; the MeshGraphNets TFRecord parser needs nothing extra.
-ingest = ["arrayroute[hdf5]>=0.1.39,<0.2"]
+ingest = ["arrayroute[hdf5]>=0.1.40,<0.2"]
 snapshots = ["arrayroute[snapshots]>=0.1.35,<0.2"]
 readers = ["arrayroute[tensorstore,zarrista,disk-cache]>=0.1.35,<0.2"]
 server = ["frontier>=0.9,<1", "httpx>=0.27"]
 test = [
-  "pytest>=8", "meshio>=5", "arrayroute[hdf5]>=0.1.39,<0.2",
+  "pytest>=8", "meshio>=5", "arrayroute[hdf5]>=0.1.40,<0.2",
   "frontier>=0.9,<1", "httpx>=0.27",
   "arrayroute[tensorstore,zarrista,disk-cache]>=0.1.35,<0.2",
   "icechunk>=2.3,<3; python_version >= '3.12'",

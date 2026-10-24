@@ -162,12 +162,34 @@ def test_local_cli_controls_produce_inspectable_dataset(tmp_path):
     source.parent.mkdir(parents=True)
     pressure, _ = fixture(source)
     out = tmp_path / "converted"
-    result = CliRunner().invoke(app, [
-        "ingest", "the-well", "synthetic_3d", "--local", "--raw-dir", str(raw),
-        "--out", str(out), "--source-splits", "train", "--trajectories", "1",
-        "--max-steps", "2", "--time-stride", "3", "--fields", "pressure",
-        "--read-buffer-mib", "1", "--materialization-mib", "2", "--no-quality",
-    ])
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingest",
+            "the-well",
+            "synthetic_3d",
+            "--local",
+            "--raw-dir",
+            str(raw),
+            "--out",
+            str(out),
+            "--source-splits",
+            "train",
+            "--trajectories",
+            "1",
+            "--max-steps",
+            "2",
+            "--time-stride",
+            "3",
+            "--fields",
+            "pressure",
+            "--read-buffer-mib",
+            "1",
+            "--materialization-mib",
+            "2",
+            "--no-quality",
+        ],
+    )
     assert result.exit_code == 0, (result.output, result.exception)
     dataset = Dataset(out)
     sample = dataset.sample(dataset.sample_ids[0])
@@ -181,14 +203,69 @@ def test_per_trajectory_coordinates_and_axis_aliases(tmp_path):
     fixture(path)
     with h5py.File(path, "a") as f:
         del f["dimensions/x"]
-        coords = f.create_dataset("dimensions/streamwise", data=np.array([
-            [0., 1., 2., 3.], [1., 2., 3., 4.]]))
+        coords = f.create_dataset(
+            "dimensions/streamwise", data=np.array([[0.0, 1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0]])
+        )
         coords.attrs["sample_varying"] = True
         f["dimensions"].attrs["spatial_dims"] = ["streamwise", "y", "z"]
         bc = f.create_group("boundary_conditions/inlet")
         bc.attrs.update(bc_type="OPEN", associated_dims=["streamwise"])
     outputs = list(read_well_file(path, max_steps=1))
-    assert outputs[0]["coords"]["x"].tolist() == [0., 1., 2., 3.]
-    assert outputs[1]["coords"]["x"].tolist() == [1., 2., 3., 4.]
+    assert outputs[0]["coords"]["x"].tolist() == [0.0, 1.0, 2.0, 3.0]
+    assert outputs[1]["coords"]["x"].tolist() == [1.0, 2.0, 3.0, 4.0]
     assert outputs[1]["boundary_conditions"] == {"x": "open"}
     assert outputs[1]["axes"] == ["x", "y", "z"]
+
+
+def test_conversion_failure_cleans_private_output_and_retry_is_exact(tmp_path, monkeypatch):
+    from frontier_data.dataset import DatasetWriter
+    from frontier_data.ingest.the_well import convert_the_well
+
+    source, output = tmp_path / "source.h5", tmp_path / "dataset"
+    pressure, _ = fixture(source)
+    original = DatasetWriter.write_grid_sample
+    calls = 0
+
+    def fail_second(writer, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        assert not output.exists()
+        if calls == 2:
+            raise OSError("injected disk write failure")
+        return original(writer, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(DatasetWriter, "write_grid_sample", fail_second)
+        with pytest.raises(OSError, match="injected disk"):
+            convert_the_well({"train": [source]}, output, name="test", quality=False)
+    assert calls == 2
+    assert not output.exists()
+    assert not list(tmp_path.glob(".arrayroute-*.partial"))
+    # The failed consumer must also close the HDF5 generator before returning.
+    with h5py.File(source, "r+") as handle:
+        handle.attrs["retry"] = True
+    ds = convert_the_well({"train": [source]}, output, name="test", quality=False)
+    assert ds.root == output
+    assert len(ds.manifest.samples) == 2
+    for i, sample in enumerate(ds.manifest.samples):
+        actual = ds.sample(sample.id).field("pressure")
+        assert actual.tobytes() == pressure[i, ..., None].tobytes()
+
+
+def test_quality_exception_never_publishes_manifest(tmp_path, monkeypatch):
+    from frontier_data import quality
+    from frontier_data.ingest.the_well import convert_the_well
+
+    source, output = tmp_path / "source.h5", tmp_path / "dataset"
+    fixture(source)
+
+    def fail(ds, **kwargs):
+        assert (ds.root / "manifest.json").is_file()
+        assert not output.exists()
+        raise RuntimeError("injected quality failure")
+
+    monkeypatch.setattr(quality, "run_quality", fail)
+    with pytest.raises(RuntimeError, match="injected quality"):
+        convert_the_well({"train": [source]}, output, name="test")
+    assert not output.exists()
+    assert not list(tmp_path.glob(".arrayroute-*.partial"))
