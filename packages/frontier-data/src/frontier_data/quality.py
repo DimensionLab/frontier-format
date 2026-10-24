@@ -35,6 +35,9 @@ from typing import Any, Literal
 
 import numpy as np
 
+from arrayroute.backends import NumpyBackend
+from arrayroute.ordered import OrderedSelection, read_flat
+from arrayroute.reader import ArrayReader, ReadStats
 from frontier_data.dataset import Dataset, SampleMeta, write_json
 from frontier_data.mesh import SurfaceMesh
 from frontier_data.splits import TrajectoryFingerprint, find_leakage, find_trajectory_leakage
@@ -479,12 +482,33 @@ def check_field_bounds(sample: Any, bounds: dict[str, Any]) -> CheckResult:
             continue
         lo, hi = float(pair[0]), float(pair[1])
         tol = BOUNDS_TOL * max(hi - lo, 1e-12)
-        arr = np.asarray(sample.array(name)[...], float).reshape(-1)
-        outside = float(((arr < lo - tol) | (arr > hi + tol)).mean()) if arr.size else 0.0
+        array = sample.array(name)
+        reader = (
+            ArrayReader(NumpyBackend(array), buffer_bytes=128 << 20)
+            if isinstance(array, np.ndarray)
+            else sample._reader(array)
+        )
+        source = OrderedSelection.create(reader, None)
+        stats = getattr(sample, "read_stats", ReadStats())
+        count = math.prod(source.shape)
+        outside_count = 0
+        minimum, maximum = math.inf, -math.inf
+        block = min(65536, reader.buffer_bytes // array.dtype.itemsize)
+        if block < 1:
+            raise MemoryError("Field-bound scan allowance cannot fit one element")
+        for start in range(0, count, block):
+            arr = read_flat(source, start, min(count, start + block), stats, None).astype(
+                np.float64
+            )
+            outside_count += int(((arr < lo - tol) | (arr > hi + tol)).sum())
+            minimum = float(np.minimum(minimum, arr.min()))
+            maximum = float(np.maximum(maximum, arr.max()))
+            del arr
+        outside = outside_count / count if count else 0.0
         detail[name] = {
             "bounds": [lo, hi],
-            "min": float(arr.min()),
-            "max": float(arr.max()),
+            "min": minimum if count else math.nan,
+            "max": maximum if count else math.nan,
             "outside_frac": outside,
         }
         worst = max(worst, outside)

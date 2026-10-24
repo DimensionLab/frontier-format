@@ -2,9 +2,9 @@
 """Quality checks for transient (time-dependent) and non-surface samples (format v1.1).
 
 :func:`transient_sample_pass` is the per-sample pass that :func:`frontier_data.quality.run_quality`
-uses for every sample that is not a steady surface. It reads one step at a time, never a whole
-trajectory (``sample.array(name)[i]``: what ``sample.field(name, t=i)`` reads, without looking
-the array up again for every step), and yields these checks:
+uses for every sample that is not a steady surface. Field scans use bounded ArrayRoute
+batches across steps; spectra select the spatial crop before reading. Signal normalization
+and static checks have separate materialization requirements. The pass yields these checks:
 
 * ``nan_inf_per_step``: non-finite values per step and field.
 * ``temporal_continuity``: jumps, frozen frames, duplicated steps, and the ``times`` axis.
@@ -38,11 +38,17 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from arrayroute.backends import NumpyBackend
+from arrayroute.ordered import OrderedSelection, read_flat
+from arrayroute.reader import ArrayReader
+from arrayroute.statistics import CompensatedSum
 from frontier_data.quality import CheckResult, Status, field_stats
 from frontier_data.splits import TrajectoryFingerprint
 
 if TYPE_CHECKING:
     from frontier_data.arrays import Sample
+
+FIELD_SCAN_ALGORITHM = "c-order-compensated-field-scan-v1"
 
 # -- thresholds -----------------------------------------------------------------------------
 
@@ -437,8 +443,13 @@ def _probe_index(n_entities: int, n: int, salt: int = 0) -> np.ndarray:
 def scan_field(
     sample: Sample | SampleInfo, name: str, steps: np.ndarray, *, velocity: bool | None = None
 ) -> FieldScan:
-    """Read ``name`` one step at a time and collect the per-step statistics. ``velocity``
-    (default: ``name`` is the sample's velocity-like field) also records ``max |u|``."""
+    """Scan fixed C-order reduction blocks within bounded I/O batches across steps.
+
+    Hashes/probes/counts are exact. Compensated block reductions have a versioned fixed
+    partition independent of storage/read budgets; they can differ in last bits from a
+    whole-frame NumPy reduction. Numeric scratch is bounded separately from reader
+    allowances and retained per-step report/probe arrays. ``velocity`` records max |u|.
+    """
     info = inspect_sample(sample)
     arr = info.arrays[name]
     if velocity is None:
@@ -467,40 +478,84 @@ def scan_field(
         probes=np.zeros((n_s, pidx.size, n_comp), dtype=np.float32),
         speed_max=np.zeros(n_s) if velocity else None,
     )
-    prev: np.ndarray | None = None
-    for j, i in enumerate(steps):
-        raw = np.ascontiguousarray(arr[int(i)])
-        scan.hashes.append(hashlib.blake2b(memoryview(raw).cast("B"), digest_size=8).hexdigest())
-        a = raw.astype(np.float64).reshape(n_ent, n_comp)
-        finite = np.isfinite(a)
-        n_bad = int(a.size - np.count_nonzero(finite))
-        if n_bad:
-            scan.non_finite[j] = n_bad
-            n_nan = int(np.isnan(a).sum())
-            scan.n_nan += n_nan
-            scan.n_inf += n_bad - n_nan
-            good = a[finite]
-            a = np.where(finite, a, 0.0)
-        else:
-            good = a
-        if good.size:
-            ss = float(np.einsum("ij,ij->", a, a))
-            scan.norm[j] = math.sqrt(ss)
-            scan.mean[j] = float(a.sum()) / good.size
-            scan.rms[j] = math.sqrt(ss / good.size)
-            scan.vmin[j] = float(good.min())
-            scan.vmax[j] = float(good.max())
-        if scan.speed_max is not None:
-            scan.speed_max[j] = float(np.sqrt(np.einsum("ij,ij->i", a, a).max()))
-        scan.probes[j] = a[pidx]
-        if j == 0:
-            scan.leak_first = a[lidx].reshape(-1).copy()
-        if j == n_s - 1:
-            scan.leak_last = a[lidx].reshape(-1).copy()
-        if prev is not None:
-            d = a - prev
-            scan.dnorm[j - 1] = math.sqrt(float(np.einsum("ij,ij->", d, d)))
-        prev = a
+    reader = (
+        ArrayReader(NumpyBackend(arr), buffer_bytes=64 << 20)
+        if isinstance(arr, np.ndarray)
+        else info.sample._reader(arr)
+    )
+    sources = [
+        OrderedSelection.create(reader, (int(i), *(slice(None) for _ in step_shape))) for i in steps
+    ]
+    if n_comp * 64 > 8 << 20:
+        raise MemoryError("Field components exceed the quality-scan workspace allowance")
+    block_rows = min(65536, max(1, (8 << 20) // (64 * n_comp)))
+    sums = [CompensatedSum() for _ in steps]
+    squares = [CompensatedSum() for _ in steps]
+    deltas = [CompensatedSum() for _ in range(max(0, n_s - 1))]
+    digests = [hashlib.blake2b(digest_size=8) for _ in steps]
+    scan.leak_first = np.zeros((lidx.size, n_comp), dtype=np.float64).reshape(-1)
+    scan.leak_last = scan.leak_first.copy()
+    # I/O batches may vary with the reader allowance; reduction leaves never do.
+    io_bytes = min(16 << 20, reader.buffer_bytes // 2)
+    io_rows = max(
+        block_rows, (io_bytes // (n_comp * max(8, arr.dtype.itemsize))) // block_rows * block_rows
+    )
+    for outer in range(0, n_ent, io_rows):
+        end = min(n_ent, outer + io_rows)
+        prev: np.ndarray | None = None
+        for j, source in enumerate(sources):
+            raw = read_flat(source, outer * n_comp, end * n_comp, info.sample.read_stats, None)
+            digests[j].update(memoryview(raw).cast("B"))
+            current = raw.astype(np.float64).reshape(end - outer, n_comp)
+            del raw
+            for start in range(outer, end, block_rows):
+                stop = min(end, start + block_rows)
+                p0, p1 = np.searchsorted(pidx, [start, stop])
+                l0, l1 = np.searchsorted(lidx, [start, stop])
+                a = current[start - outer : stop - outer]
+                finite = np.isfinite(a)
+                n_bad = int(a.size - np.count_nonzero(finite))
+                if n_bad:
+                    scan.non_finite[j] += n_bad
+                    n_nan = int(np.isnan(a).sum())
+                    scan.n_nan += n_nan
+                    scan.n_inf += n_bad - n_nan
+                    good = a[finite]
+                    a[~finite] = 0.0
+                else:
+                    good = a
+                if good.size:
+                    squares[j].add(float(np.einsum("ij,ij->", a, a)))
+                    sums[j].add(float(a.sum()))
+                    lo, hi = float(good.min()), float(good.max())
+                    scan.vmin[j] = lo if np.isnan(scan.vmin[j]) else min(scan.vmin[j], lo)
+                    scan.vmax[j] = hi if np.isnan(scan.vmax[j]) else max(scan.vmax[j], hi)
+                if scan.speed_max is not None:
+                    scan.speed_max[j] = max(
+                        scan.speed_max[j], float(np.sqrt(np.einsum("ij,ij->i", a, a).max()))
+                    )
+                scan.probes[j, p0:p1] = a[pidx[p0:p1] - start]
+                if j == 0:
+                    scan.leak_first.reshape(-1, n_comp)[l0:l1] = a[lidx[l0:l1] - start]
+                if j == n_s - 1:
+                    scan.leak_last.reshape(-1, n_comp)[l0:l1] = a[lidx[l0:l1] - start]
+                if prev is not None:
+                    d = a - prev[start - outer : stop - outer]
+                    deltas[j - 1].add(float(np.einsum("ij,ij->", d, d)))
+                    del d
+                del finite, good, a
+            prev = current
+            del current
+        del prev
+    scan.hashes = [digest.hexdigest() for digest in digests]
+    for j in range(n_s):
+        n_good = n_ent * n_comp - int(scan.non_finite[j])
+        if n_good:
+            scan.norm[j] = math.sqrt(squares[j].value)
+            scan.mean[j] = sums[j].value / n_good
+            scan.rms[j] = math.sqrt(squares[j].value / n_good)
+        if j:
+            scan.dnorm[j - 1] = math.sqrt(deltas[j - 1].value)
     return scan
 
 
@@ -1145,12 +1200,17 @@ def check_spectra(
     vort_arr = info.arrays[vort] if vort is not None else None
 
     def spectra_at(step: int) -> tuple[np.ndarray, np.ndarray | None]:
-        u = np.asarray(target_arr[step])[sl]
+        u = info.sample._reader(target_arr).read(
+            (step, *sl, slice(None)), stats=info.sample.read_stats
+        )
         power, hats = grid.power(u)
         energy = 0.5 * grid.shells(power)
         ens: np.ndarray | None = None
         if vort_arr is not None:
-            ens = 0.5 * grid.shells(grid.power(np.asarray(vort_arr[step])[sl])[0])
+            v = info.sample._reader(vort_arr).read(
+                (step, *sl, slice(None)), stats=info.sample.read_stats
+            )
+            ens = 0.5 * grid.shells(grid.power(v)[0])
         elif derive_enstrophy:
             kx = grid.angular[0][:, None]
             ky = grid.angular[1][None, :]
@@ -1670,6 +1730,7 @@ def transient_sample_pass(
             "group": group,
             "fields": [s.name for s in scans],
             "scan_stride": stride,
+            "field_scan_algorithm": FIELD_SCAN_ALGORITHM,
             "stationarity": result.stationarity,
             "burn_in": result.burn_in,
             "n_eff": stationarity.detail.get("n_eff_min"),

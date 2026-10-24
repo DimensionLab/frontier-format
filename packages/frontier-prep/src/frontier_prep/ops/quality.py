@@ -12,9 +12,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
-import numpy as np
 from pydantic import Field
 
+from arrayroute.ordered import update_digest
 from frontier_data.dataset import Dataset, Manifest
 from frontier_prep.base import BaseOp, DatasetRef, SampleOutcome
 from frontier_prep.io import SampleEditor
@@ -89,7 +89,7 @@ class CheckParams(Params):
 @register
 class QualityCheck(BaseOp):
     id = "prep.quality.check"
-    version = "1.0.1"
+    version = "1.1.0"
     category = "quality"
     summary = (
         "Run every frontier-data quality check (closure checks first) and record each result as an "
@@ -139,7 +139,13 @@ class QualityCheck(BaseOp):
             for name in s.field_names():
                 loc = "cell" if name in s.field_names("cell") else None
                 if s.is_time_dependent(name, loc):
-                    h.update(np.ascontiguousarray(s.field(name, 0, location=loc)).tobytes())
+                    array = s.array(name, location=loc)
+                    update_digest(
+                        h,
+                        s._reader(array),
+                        (0, *(slice(None) for _ in array.shape[1:])),
+                        stats=s.read_stats,
+                    )
             stats["frame0"] = h.hexdigest()[:16]
         return SampleOutcome(sample_id=ed.id, stats=stats)
 
