@@ -211,3 +211,44 @@ assertion. `prep.quality.check` 1.5.0 uses the same fitted reader with its exist
 `statistics_workspace_mib` parameter. These diagnostic operations leave source units and
 values intact. Reader buffers, native caches and retained time/diagnostic arrays are separate
 from normalization scratch; the latter arrays still grow with the number of time steps.
+
+## Fit training-field normalization
+
+`prep.fields.normalize` 2.0.0 fits complete finite channel rows from a declared split.
+A missing, empty, duplicated, unknown or overlapping split fails instead of falling back
+to all samples. All training timesteps are included by default; set `max_steps` explicitly
+for deterministic evenly spaced sampling. Validation and inference reuse the recorded
+coefficients without fitting their own statistics.
+
+```json
+{
+  "split": "train",
+  "method": "zscore",
+  "max_steps": null,
+  "read_engine": "tensorstore",
+  "read_buffer_mib": 128,
+  "statistics_workspace_mib": 32,
+  "tensorstore_cache_mib": 64
+}
+```
+
+The default engine is Zarr-Python, with no native cache allowance. A nonzero
+`tensorstore_cache_mib` requires TensorStore. Optional engines must be installed.
+ArrayRoute supplies ordered reads and fixed 4096-row statistical leaves. Per-sample
+moments are merged in natural sample order, independently of worker completion order.
+The mean and centred second moment replace cancellation-prone raw sum-of-squares
+subtraction. Rows with any nonfinite component are excluded as a whole; fields with no
+usable rows fail. Channel counts and declared units must agree across fitted samples.
+
+The manifest records the algorithm, units, selected samples/steps, original shapes/dtypes,
+selected-value SHA-256 fingerprints and read policy. Fingerprints cover selected native
+field bytes, not every source file or time coordinate; preparation's input version supplies
+that wider identity. Exact replay requires fixed sources, sample grouping/order, selections,
+dtypes and numerical runtime. Different read buffers/workspaces preserve fitted values.
+Results can differ from the previous numerical algorithm; the op version marks that change.
+
+Numeric workspace admission requires at least `channels * (4096 * 128 + 256)` bytes.
+Ordered read intervals contain at most 65,536 rows and shrink with available workspace and
+read allowance. Native caches, source buffers, sample metadata and worker multiplicity are
+additional to numeric scratch. This is not a global process-memory limit. Full fitting
+scans every selected value; sampling changes the fit and is recorded explicitly.

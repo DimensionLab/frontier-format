@@ -9,11 +9,17 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import Field
 
+from arrayroute.reader import ReadStats
+from arrayroute.session import LocalReadSession
+from arrayroute.statistics import ChannelMoments
 from frontier_data.dataset import Manifest
 from frontier_data.mesh import SurfaceMesh
+from frontier_data.query import FieldReader
 from frontier_prep import vocabulary as vocab
 from frontier_prep.base import BaseOp, DatasetRef, SampleOutcome
 from frontier_prep.io import SampleEditor
+from frontier_prep.normalization import ALGORITHM as NORMALIZATION_ALGORITHM
+from frontier_prep.normalization import fit_field
 from frontier_prep.op import (
     Assertion,
     Change,
@@ -962,15 +968,22 @@ class NormalizeParams(Params):
     split: str = Field(default="train", description="Statistics are fitted on this split only.")
     method: Literal["zscore", "minmax"] = "zscore"
     write: bool = Field(default=True, description="Store under manifest.stats.normalization.")
-    max_steps: int = Field(
-        default=64, description="Transient samples: steps used per sample (evenly spaced)."
+    max_steps: int | None = Field(
+        default=None,
+        ge=1,
+        strict=True,
+        description="Use all training steps, or sample this many evenly spaced steps.",
     )
+    read_engine: Literal["zarr-python", "tensorstore", "zarrista"] = "zarr-python"
+    read_buffer_mib: int = Field(default=128, ge=1, strict=True)
+    statistics_workspace_mib: int = Field(default=32, ge=1, strict=True)
+    tensorstore_cache_mib: int = Field(default=0, ge=0, strict=True)
 
 
 @register
 class NormalizeStats(BaseOp):
     id = "prep.fields.normalize"
-    version = "1.0.0"
+    version = "2.0.0"
     category = "fields"
     summary = (
         "Fit per-field normalisation statistics on the training split only and record them in the "
@@ -985,7 +998,22 @@ class NormalizeStats(BaseOp):
     Params = NormalizeParams
 
     def plan_samples(self, ref: DatasetRef, params: NormalizeParams) -> list[str]:
-        ids = ref.manifest.splits.get(params.split) or ref.sample_ids()
+        ids = ref.manifest.splits.get(params.split)
+        if not ids:
+            raise ValueError(
+                f"Normalization split {params.split!r} is missing or empty; create a nonempty "
+                "training split before fitting normalization."
+            )
+        if len(ids) != len(set(ids)) or set(ids) - set(ref.sample_ids()):
+            raise ValueError("Normalization split contains duplicate or unknown samples")
+        if any(
+            set(ids) & set(other)
+            for split, other in ref.manifest.splits.items()
+            if split != params.split
+        ):
+            raise ValueError(
+                "Normalization split overlaps another split; repair the partition first"
+            )
         return sorted(ids, key=_natural)
 
     def plan_manifest(self, ref: DatasetRef, params: NormalizeParams) -> list[Change]:
@@ -1001,26 +1029,36 @@ class NormalizeStats(BaseOp):
         self, ed: SampleEditor, params: NormalizeParams, *, seed: int
     ) -> SampleOutcome:
         s = ed.sample
+        session = LocalReadSession(
+            params.read_engine, buffer_bytes=params.read_buffer_mib << 20,
+            tensorstore_cache_bytes=params.tensorstore_cache_mib << 20,
+        )
         acc: dict[str, Any] = {}
         for name in _fields_of(ed, params.fields):
             loc = ed.location_of(name)
-            if s.is_time_dependent(name, loc):
-                idx = np.unique(
-                    np.linspace(0, s.n_steps - 1, min(params.max_steps, s.n_steps)).astype(int)
+            selected_steps = None
+            if s.is_time_dependent(name, loc) and params.max_steps is not None:
+                count = min(params.max_steps, s.n_steps)
+                selected_steps = (
+                    [i * (s.n_steps - 1) // (count - 1) for i in range(count)] if count > 1 else [0]
                 )
-                data = s.field(name, idx, location=loc)
-            else:
-                data = ed.field(name, location=loc)
-            x = data.reshape(-1, data.shape[-1]).astype(np.float64)
-            fin = np.isfinite(x).all(axis=1)
-            x = x[fin]
-            acc[name] = {
-                "n": int(x.shape[0]),
-                "sum": np.sum(x, axis=0).tolist(),
-                "sumsq": np.sum(x * x, axis=0).tolist(),
-                "min": np.min(x, axis=0).tolist() if len(x) else [],
-                "max": np.max(x, axis=0).tolist() if len(x) else [],
-            }
+            selections = (
+                [None]
+                if selected_steps is None
+                else [
+                    (step, *(slice(None) for _ in s.dims(name, loc)[1:])) for step in selected_steps
+                ]
+            )
+            reader = FieldReader(s, name, location=loc, session=session)
+            stats = ReadStats()
+            acc[name] = fit_field(
+                reader.reader,
+                selections,
+                workspace_bytes=params.statistics_workspace_mib << 20,
+                stats=stats,
+            )
+            acc[name].update(units=reader.units, selected_steps=selected_steps)
+            ed.bytes_read += stats.output_bytes
         return SampleOutcome(sample_id=ed.id, stats=acc)
 
     def apply_manifest(
@@ -1031,41 +1069,77 @@ class NormalizeStats(BaseOp):
         outcomes: list[SampleOutcome],
     ) -> tuple[list[Change], dict[str, Any]]:
         fields: dict[str, Any] = {}
-        for o in outcomes:  # sorted sample order -> deterministic accumulation
+        outcomes = sorted(outcomes, key=lambda o: _natural(o.sample_id))
+        for o in outcomes:
             for name, a in o.stats.items():
+                channels = len(a["mean"])
                 f = fields.setdefault(
-                    name, {"n": 0, "sum": None, "sumsq": None, "min": None, "max": None}
+                    name,
+                    {
+                        "moments": ChannelMoments(channels),
+                        "min": None,
+                        "max": None,
+                        "units": a["units"],
+                    },
                 )
-                f["n"] += a["n"]
-                for key in ("sum", "sumsq"):
-                    v = np.asarray(a[key], dtype=np.float64)
-                    f[key] = v if f[key] is None else f[key] + v
-                if a["min"]:
+                if len(f["moments"].count) != channels or f["units"] != a["units"]:
+                    raise ValueError(
+                        f"Inconsistent channels or units for {name!r}; prepare them first"
+                    )
+                other = ChannelMoments(channels)
+                other.count[:] = a["n"]
+                other.mean = np.asarray(a["mean"], dtype=np.float64)
+                other.m2 = np.asarray(a["m2"], dtype=np.float64)
+                f["moments"].merge(other)
+                if a["n"]:
                     f["min"] = (
                         np.asarray(a["min"]) if f["min"] is None else np.minimum(f["min"], a["min"])
                     )
                     f["max"] = (
                         np.asarray(a["max"]) if f["max"] is None else np.maximum(f["max"], a["max"])
                     )
+        if not fields:
+            raise ValueError("No fields selected for normalization; choose existing fields")
         norm: dict[str, Any] = {}
         for name, f in fields.items():
-            if f["n"] == 0 or f["sum"] is None:
-                continue
-            mean = f["sum"] / f["n"]
-            var = np.maximum(f["sumsq"] / f["n"] - mean**2, 0.0)
+            moments = f["moments"]
+            if moments.count[0] == 0:
+                raise ValueError(f"No complete finite training rows for field {name!r}")
+            if not np.isfinite(moments.mean).all() or not np.isfinite(moments.variance).all():
+                raise ValueError(
+                    f"Normalization moments overflow for {name!r}; rescale units first"
+                )
             norm[name] = {
-                "mean": mean.tolist(),
-                "std": np.sqrt(var).tolist(),
-                "min": None if f["min"] is None else np.asarray(f["min"]).tolist(),
-                "max": None if f["max"] is None else np.asarray(f["max"]).tolist(),
-                "n": f["n"],
+                "mean": moments.mean.tolist(),
+                "std": np.sqrt(moments.variance).tolist(),
+                "min": f["min"].tolist(),
+                "max": f["max"].tolist(),
+                "n": int(moments.count[0]),
+                "units": f["units"],
             }
         if params.write:
             manifest.stats["normalization"] = {
+                "algorithm": NORMALIZATION_ALGORITHM,
                 "method": params.method,
                 "split": params.split,
                 "fields": norm,
                 "samples": [o.sample_id for o in outcomes],
+                "source_fields": {
+                    o.sample_id: {
+                        name: {
+                            key: a[key]
+                            for key in ("sha256", "rows_seen", "selected_steps", "dtype", "shape")
+                        }
+                        for name, a in o.stats.items()
+                    }
+                    for o in outcomes
+                },
+                "read_policy": {
+                    "engine": params.read_engine,
+                    "buffer_mib": params.read_buffer_mib,
+                    "statistics_workspace_mib": params.statistics_workspace_mib,
+                    "tensorstore_cache_mib": params.tensorstore_cache_mib,
+                },
             }
         return [
             Change(
