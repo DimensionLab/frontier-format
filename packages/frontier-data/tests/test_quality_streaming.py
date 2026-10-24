@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 import hashlib
+from typing import cast
 
 import numpy as np
+import pytest
 
 from arrayroute.session import LocalReadSession
 from frontier_data import Dataset, DatasetWriter
@@ -81,3 +83,25 @@ def test_spectrum_crops_before_payload_read(tmp_path, monkeypatch):
     assert result.status != "skip" and series is not None
     assert requests
     assert all(s[1] == slice(0, 8) and s[2] == slice(0, 8) for s in requests)
+
+
+def test_wide_components_rejected_before_report_allocation(monkeypatch):
+    from frontier_data import quality_transient as quality
+
+    array = np.broadcast_to(np.array(0, dtype="f4"), (1, 1, 131073))
+    info = quality.SampleInfo(
+        sample=cast(Sample, None),
+        is_transient=True,
+        names=["wide"],
+        arrays={"wide": array},
+        dims={"wide": ["time", "point", "component"]},
+        static_names=[],
+    )
+    steps = np.arange(1)
+
+    def allocate(*args, **kwargs):
+        pytest.fail("Report allocation must follow component admission")
+
+    monkeypatch.setattr(np, "zeros", allocate)
+    with pytest.raises(MemoryError, match="components"):
+        quality.scan_field(info, "wide", steps)

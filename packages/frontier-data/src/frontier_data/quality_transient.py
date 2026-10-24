@@ -456,6 +456,8 @@ def scan_field(
         velocity = info.velocity == ("field", name)
     step_shape = tuple(int(s) for s in arr.shape[1:])
     n_comp = step_shape[-1] if info.dims[name][-1:] == ["component"] and step_shape else 1
+    if n_comp * 64 > 8 << 20:
+        raise MemoryError("Field components exceed the quality-scan workspace allowance")
     n_ent = max(int(np.prod(step_shape)) // max(n_comp, 1), 1)
     n_s = int(steps.size)
     n_probe = int(np.clip(PROBE_BUDGET // max(n_s * n_comp, 1), 64, PROBE_POINTS))
@@ -486,8 +488,6 @@ def scan_field(
     sources = [
         OrderedSelection.create(reader, (int(i), *(slice(None) for _ in step_shape))) for i in steps
     ]
-    if n_comp * 64 > 8 << 20:
-        raise MemoryError("Field components exceed the quality-scan workspace allowance")
     block_rows = min(65536, max(1, (8 << 20) // (64 * n_comp)))
     sums = [CompensatedSum() for _ in steps]
     squares = [CompensatedSum() for _ in steps]
