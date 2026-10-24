@@ -174,3 +174,21 @@ def test_local_cli_controls_produce_inspectable_dataset(tmp_path):
     assert sample.n_steps == 2
     assert sample.field("pressure").tobytes() == pressure[0, :6:3, ..., None].tobytes()
     assert sample.meta.provenance.files[0].sha256
+
+
+def test_per_trajectory_coordinates_and_axis_aliases(tmp_path):
+    path = tmp_path / "coordinates.h5"
+    fixture(path)
+    with h5py.File(path, "a") as f:
+        del f["dimensions/x"]
+        coords = f.create_dataset("dimensions/streamwise", data=np.array([
+            [0., 1., 2., 3.], [1., 2., 3., 4.]]))
+        coords.attrs["sample_varying"] = True
+        f["dimensions"].attrs["spatial_dims"] = ["streamwise", "y", "z"]
+        bc = f.create_group("boundary_conditions/inlet")
+        bc.attrs.update(bc_type="OPEN", associated_dims=["streamwise"])
+    outputs = list(read_well_file(path, max_steps=1))
+    assert outputs[0]["coords"]["x"].tolist() == [0., 1., 2., 3.]
+    assert outputs[1]["coords"]["x"].tolist() == [1., 2., 3., 4.]
+    assert outputs[1]["boundary_conditions"] == {"x": "open"}
+    assert outputs[1]["axes"] == ["x", "y", "z"]

@@ -179,28 +179,26 @@ def read_well_file(
     ) as session:
         check_cancel()
         f = session.metadata()
+        if str(_decode(f.attrs.get("grid_type", "cartesian"))).lower() != "cartesian":
+            raise ValueError("Well grid_type is not a regular grid (cartesian required)")
         dims = session.metadata("dimensions")
         axes = [str(a) for a in _decode(dims.attrs.get("spatial_dims", ["x", "y", "z"]))]
         axes = [a for a in axes if a in dims]
         if not 1 <= len(axes) <= 3 or len(set(axes)) != len(axes):
             raise ValueError("Well dimensions must declare one to three unique spatial axes")
-        coords = {}
-        for axis in axes:
-            r = session.open(f"dimensions/{axis}")
-            coords[axis] = (
-                _materialize(
-                    r,
-                    (slice(None),) * len(r.backend.spec.shape),
-                    output_limit=read_buffer_bytes // 2,
-                    cancelled=cancelled,
-                    stats=read_stats,
-                )
-                .astype(np.float64)
-                .reshape(-1)
-            )
-        space = tuple(len(coords[a]) for a in axes)
-        if not all(space):
-            raise ValueError("Well spatial coordinates must not be empty")
+        source_axes = axes
+        axes = list(("x", "y", "z")[: len(source_axes)])
+        axis_map = dict(zip(source_axes, axes, strict=True))
+        coordinate_cache = {}
+        coordinate_sources = []
+        for source_axis, axis in axis_map.items():
+            node = session.metadata(f"dimensions/{source_axis}")
+            varying = _flag(node, "sample_varying", False)
+            if _flag(node, "time_varying", False):
+                raise ValueError("Time-varying Well coordinates require a moving-grid adapter")
+            if node.ndim != (2 if varying else 1):
+                raise ValueError("Well coordinate shape disagrees with sample_varying")
+            coordinate_sources.append((source_axis, axis, varying))
         time_ds = session.metadata("dimensions/time")
         if time_ds.ndim not in (1, 2):
             raise ValueError("Well time coordinates must have one or two dimensions")
@@ -212,13 +210,32 @@ def read_well_file(
                 g = session.metadata(f"boundary_conditions/{name}")
                 kind = str(_decode(g.attrs.get("bc_type", name))).lower()
                 for ax in _decode(g.attrs.get("associated_dims", [])) or []:
-                    prev = bcs.get(str(ax))
-                    bcs[str(ax)] = kind if prev in (None, kind) else [*np.atleast_1d(prev), kind]
+                    mapped = axis_map.get(str(ax), str(ax))
+                    prev = bcs.get(mapped)
+                    bcs[mapped] = kind if prev in (None, kind) else [*np.atleast_1d(prev), kind]
         attrs = {k: _decode(v) for k, v in f.attrs.items()}
         scalars = session.metadata("scalars") if "scalars" in f else {}
         n = n_traj if max_trajectories is None else min(n_traj, max_trajectories)
         for traj in range(n):
             check_cancel()
+            coords = {}
+            for source_axis, axis, varying in coordinate_sources:
+                if varying or axis not in coordinate_cache:
+                    coordinate = _materialize(
+                        session.open(f"dimensions/{source_axis}"),
+                        ((traj,) if varying else ()) + (slice(None),),
+                        output_limit=read_buffer_bytes // 2,
+                        cancelled=cancelled,
+                        stats=read_stats,
+                    ).astype(np.float64)
+                    if not varying:
+                        coordinate_cache[axis] = coordinate
+                else:
+                    coordinate = coordinate_cache[axis]
+                coords[axis] = coordinate
+            space = tuple(len(coords[a]) for a in axes)
+            if not all(space):
+                raise ValueError("Well spatial coordinates must not be empty")
             count = len(range(0, time_ds.shape[-1], time_stride))
             count = min(count, max_steps) if max_steps is not None else count
             if count < 1:
@@ -304,6 +321,8 @@ def read_well_file(
             for name in sorted(scalars):
                 check_cancel()
                 ds = session.metadata(f"scalars/{name}")
+                if _flag(ds, "time_varying", False):
+                    continue
                 if ds.shape == ():
                     v = session.read_scalar(f"scalars/{name}")
                 elif ds.size == 1:
@@ -320,6 +339,7 @@ def read_well_file(
                 "times": times,
                 "coords": coords,
                 "axes": axes,
+                "ndim": len(axes),
                 "boundary_conditions": bcs,
                 "parameters": params,
                 "attrs": attrs,
