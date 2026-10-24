@@ -20,7 +20,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 API_VERSIONS: dict[str, str] = dict.fromkeys(
     (
@@ -35,6 +35,7 @@ API_VERSIONS: dict[str, str] = dict.fromkeys(
         "models",
         "profilers",
         "views",
+        "data_adapters",
     ),
     "1.0.0",
 )
@@ -50,6 +51,7 @@ ENTRY_POINT_APIS = {
     "frontier_train.models": "models",
     "frontier.profilers": "profilers",
     "frontier.views": "views",
+    "frontier.data_adapters": "data_adapters",
 }
 log = logging.getLogger("frontier.plugins")
 

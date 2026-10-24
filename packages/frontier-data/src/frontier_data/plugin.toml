@@ -1,0 +1,47 @@
+schema = 1
+id = "frontier-data"
+kind = "data-adapter"
+name = "Frontier data engines"
+version = "0.9.21"
+summary = "Bounded array selections and optional device transforms"
+licence = "Apache-2.0"
+maturity = "verified-synthetic"
+
+[author]
+name = "DimensionLab"
+company = "DimensionLab s.r.o."
+
+[api]
+data_adapters = ">=1,<2"
+
+[data_adapters.zarr]
+summary = "Local or mounted Zarr arrays through ArrayRoute"
+stages = ["read"]
+devices = ["cpu"]
+platforms = ["Linux", "Darwin", "Windows"]
+determinism = "exact"
+requires = ["zarr>=3"]
+
+[data_adapters.tensorstore]
+summary = "Bounded local Zarr reads with TensorStore I/O pools"
+stages = ["read"]
+devices = ["cpu"]
+platforms = ["Linux", "Darwin", "Windows"]
+determinism = "exact"
+requires = ["tensorstore>=0.1.76"]
+
+[data_adapters.zarrista]
+summary = "Local Zarr arrays through the Rust Zarrista reader"
+stages = ["read"]
+devices = ["cpu"]
+platforms = ["Linux", "Darwin", "Windows"]
+determinism = "exact"
+requires = ["zarrista>=0.1,<0.2"]
+
+[data_adapters.normalize]
+summary = "Recorded float32 channel normalization on CPU or CUDA"
+stages = ["transform"]
+devices = ["cpu", "cuda"]
+platforms = ["Linux", "Darwin", "Windows"]
+determinism = "fixed-runtime"
+requires = ["torch>=2.4"]

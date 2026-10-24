@@ -20,7 +20,8 @@
         "importer",
         "model",
         "operation",
-        "profiler"
+        "profiler",
+        "data-adapter"
       ]
     },
     "name": {
@@ -182,6 +183,75 @@
     },
     "license": {
       "type": "string"
+    },
+    "data_adapters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "summary",
+          "stages",
+          "devices",
+          "platforms",
+          "determinism"
+        ],
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "determinism": {
+            "enum": [
+              "exact",
+              "fixed-runtime",
+              "statistical"
+            ]
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stages": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "read",
+                "write",
+                "transform",
+                "load",
+                "visualize"
+              ]
+            }
+          },
+          "devices": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "cpu",
+                "cuda"
+              ]
+            }
+          },
+          "platforms": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "Linux",
+                "Darwin",
+                "Windows"
+              ]
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": false,

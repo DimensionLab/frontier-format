@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -46,6 +46,26 @@ class ArrayFieldReader:
     association: str
     snapshot_id: str | None = None
     retention_tag: str | None = None
+
+    @classmethod
+    def from_plugin(
+        cls, plugin: str, adapter: str, source: dict[str, str], *,
+        dimensions: tuple[str, ...], units: str, association: str,
+        buffer_bytes: int = 128 << 20, snapshot_id: str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> ArrayFieldReader:
+        """Open an installed data engine through the shared selection/budget contract.
+
+        Source metadata must come from the connector's verified catalog. A supplied
+        snapshot id records identity; it does not make a mutable source immutable.
+        The adapter owns its native caches; buffer_bytes bounds ArrayRoute reads.
+        """
+        from frontier_plugins.data_adapters import load
+
+        factory = load(plugin, adapter, stage="read", device="cpu")
+        backend = factory(source, **(options or {}))
+        reader = ArrayReader(backend, buffer_bytes=buffer_bytes)
+        return cls(reader, dimensions, units, association, snapshot_id)
 
     def with_access_trace(self, recorder: TraceRecorder, *, identity: str) -> ArrayFieldReader:
         """Observe this field's reads while preserving units, provenance and buffer limits."""

@@ -703,3 +703,30 @@ are `max_archive_bytes` (default 1 TiB), `buffer_bytes` (default 1 MiB, covering
 buffers), and a `cancelled` callback. Python metadata and OS caches are additional memory.
 This does not make the earlier NPZ/JSON/Zarr prediction-generation steps transactional,
 nor does it make NPZ prediction reads lazy. Those remain separate integration work.
+
+## Installed data engines
+
+`ArrayFieldReader.from_plugin` opens a trusted installed data adapter through
+ArrayRoute. Zarr-Python, TensorStore and Zarrista factories accept local or mounted
+Zarr v2/v3 stores. Install the selected engine in the executor's environment;
+`python -m frontier_plugins --data-adapters` reports optional dependency and
+compatibility failures without importing native engines.
+
+```python
+from frontier_data.query import ArrayFieldReader
+
+field = ArrayFieldReader.from_plugin(
+    "frontier-data", "tensorstore",
+    {"store": "simulation.zarr", "array_path": "pressure"},
+    dimensions=("time", "point", "channel"),
+    units="Pa", association="node", buffer_bytes=64 << 20,
+    options={"tensorstore_threads": 4, "tensorstore_cache_bytes": 32 << 20},
+)
+selection = field.read_rows([2, 0, 2], selectors={"point": slice(0, 1000)})
+```
+
+Dimensions and physical units must come from the verified source schema. Row order
+and duplicates are preserved; the same selection API applies to all three engines.
+ArrayRoute read budgets and native engine caches are separate memory allocations.
+Supplying a snapshot identifier records provenance but does not freeze a mutable
+store. No universal remote-storage authentication is implied by these local factories.

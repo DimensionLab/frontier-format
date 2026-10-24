@@ -1,13 +1,13 @@
 [project]
 name = "frontier-data"
-version = "0.9.20"
+version = "0.9.21"
 description = "DimensionLab Frontier – dataset ingestion, quality and splits for CFD surrogate training"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
-  "arrayroute>=0.1.62,<0.2",
-  "frontier-plugins>=1,<2",
+  "arrayroute>=0.1.63,<0.2",
+  "frontier-plugins>=1.3,<2",
   "scipy>=1.13",
   "numpy>=1.26",
   "pydantic>=2.10",
@@ -39,6 +39,15 @@ frontier-plugins = { workspace = true }
 [project.scripts]
 frontier-data = "frontier_data.cli:main"
 frontier-prediction-export = "frontier_data.grid_export:main"
+
+[project.entry-points."frontier.plugins"]
+frontier-data = "frontier_data"
+
+[project.entry-points."frontier.data_adapters"]
+zarr = "frontier_data.adapters:zarr"
+tensorstore = "frontier_data.adapters:tensorstore"
+zarrista = "frontier_data.adapters:zarrista"
+normalize = "frontier_data.adapters:normalize"
 
 [build-system]
 requires = ["uv_build>=0.8.9,<0.9.0"]

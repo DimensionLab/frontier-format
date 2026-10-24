@@ -11,7 +11,14 @@ from frontier_plugins import API_VERSIONS, ENTRY_POINT_APIS, check_entry_point
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="Print the machine-readable report")
+    parser.add_argument("--data-adapters", action="store_true", help="List data capabilities")
     args = parser.parse_args()
+    if args.data_adapters:
+        from frontier_plugins.data_adapters import catalog
+
+        adapters = catalog()
+        print(json.dumps({"data_adapters": adapters}, indent=2))
+        return 0 if all(row["available"] for row in adapters) else 1
     rows = []
     for group, api in ENTRY_POINT_APIS.items():
         for ep in entry_points(group=group):

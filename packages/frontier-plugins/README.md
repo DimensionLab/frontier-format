@@ -44,6 +44,8 @@ expanding dependency ranges; private imports do not become stable public interfa
 | `hosts`      | `frontier_deploy.hosts`    |
 | `models`     | `frontier_train.models`    |
 | `profilers`  | `frontier.profilers`       |
+| `views`      | `frontier.views`           |
+| `data_adapters` | `frontier.data_adapters` |
 
 These interfaces currently expose API `1.0.0`. Declare every interface the plugin
 requires or provides under `[api]`, using PEP 440 version ranges. Unknown required
@@ -152,3 +154,67 @@ isolation where untrusted execution requires it.
 Standards: [PyPA entry points](https://packaging.python.org/en/latest/specifications/entry-points/),
 [dependency specifiers](https://packaging.python.org/en/latest/specifications/dependency-specifiers/),
 [version specifiers](https://packaging.python.org/en/latest/specifications/version-specifiers/).
+
+## Data adapter factories
+
+Requires `frontier-plugins>=1.3,<2`. Register a trusted, installed factory with
+the `frontier.data_adapters` group and an explicit `api.data_adapters` range:
+
+```toml
+# pyproject.toml
+[project.entry-points."frontier.plugins"]
+acme-data = "acme_data"
+
+[project.entry-points."frontier.data_adapters"]
+reader = "acme_data.reader:open_array"
+```
+
+The package's `plugin.toml` includes its ordinary identity, version and author
+metadata plus:
+
+```toml
+kind = "data-adapter"
+
+[api]
+data_adapters = ">=1,<2"
+
+[data_adapters.reader]
+summary = "Bounded local array reads"
+stages = ["read"]
+devices = ["cpu"]
+platforms = ["Linux", "Darwin", "Windows"]
+determinism = "exact"
+requires = ["acme-array-engine>=1,<2"]
+```
+
+`catalog()` checks metadata, API compatibility, disable state, platform and
+installed requirements without importing the factory. `available` means those
+checks passed; `runtime_verified` remains false until the caller tests an actual
+operation on the intended executor. Each executor discovers its own environment.
+
+```python
+from frontier_plugins.data_adapters import catalog, load
+
+print(catalog())
+open_array = load("acme-data", "reader", stage="read", device="cpu")
+backend = open_array(source, **engine_options)
+```
+
+A `read` factory used by `ArrayFieldReader.from_plugin` accepts a source mapping
+and engine options and returns an ArrayRoute backend. The wrapper validates
+scientific dimensions and applies bounded selections. Native library caches are
+separate allocations and must have explicit engine budgets. A transform factory
+has its operation-specific documented parameters; Frontier's `normalize` factory
+accepts `mean`, `scale` and `device` and returns a callable for float32 tensors.
+Cache the selected factory/operation outside per-sample loops.
+
+`exact` describes lossless deterministic reads of a fixed source. `fixed-runtime`
+requires the same recorded execution environment for exact arithmetic replay;
+`statistical` must supply its own error/distribution checks. A declaration alone
+is not evidence: providers must test their claims. Snapshot names alone do not
+freeze mutable data. Source identity, units, split and statistics provenance must
+be retained by the workflow.
+
+Stages `write`, `load` and `visualize` are reserved capability names. They do not
+create a writer, trainer or renderer automatically. New consumers need a defined
+call contract and acceptance tests before advertising an integration.
