@@ -495,3 +495,33 @@ broadcast tensor fields. They no longer require a whole trajectory to fit in mem
 still materializes by default for callers requesting arrays; `deferred=True` returns borrowed
 sources that must be consumed before its iterator closes. Tensor components must fit together
 within a block. Optional quality/preparation stages have their own resource behavior.
+
+## Reader policies for quality checks
+
+Quality checks accept an explicit ArrayRoute read session. The same session reaches steady
+surface fields/geometry, transient scans, static arrays, signals and spectral crops.
+Per-sample `read_policy` records the engine, read allowance, native threads, cache allowance
+and immutable-input assertion. A report merged from precomputed workers retains each
+worker's policy; it does not relabel those reads with the merger's settings.
+
+```sh
+python -m frontier_data quality my-dataset --engine tensorstore \
+  --read-buffer-mib 128 --cache-mib 128 --native-threads 8
+```
+
+Install the `frontier-data[readers]` extra for alternative engines. Zarr-Python remains the
+explicit default; TensorStore and Zarrista are opt-in. Invalid engine/cache combinations
+fail instead of silently switching readers. In Python, pass `session=...` to `run_quality`
+or `compute_sample_stats`; create it with `ReadSettings(...).session(buffer_bytes)`.
+
+The cache is a TensorStore soft limit in addition to read buffers. Numerical reductions,
+FFT workspaces, report/probe storage, retained geometry and native codec memory are also
+additional. Static fields and spectral crops must fit the selected read allowance; larger
+selections require an explicitly larger allowance. This is not a process memory limit.
+Each preparation worker has its own session and allowances.
+
+Freshness checks stay enabled by default. `--immutable-inputs` asserts that array values and
+metadata will remain fixed for the session and allows TensorStore to omit data freshness
+checks. It does not create a snapshot or lock a writer. Use that option only with an owned
+immutable revision, and create a fresh session after changing inputs. Choosing a cache size
+or engine does not change the canonical numerical reduction partition or physical units.

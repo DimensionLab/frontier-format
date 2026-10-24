@@ -1641,7 +1641,9 @@ def transient_sample_pass(
             fields[fname] = _scan_field_stats(scan)
             shapes[fname] = [int(v) for v in arr.shape[1:]]
         else:
-            data = np.asarray(arr[...])
+            data = sample._reader(arr).read(
+                (slice(None),) * len(arr.shape), stats=sample.read_stats
+            )
             fields[fname] = field_stats(data)
             shapes[fname] = [int(v) for v in data.shape]
             other_bad[fname] = int((~np.isfinite(data)).sum())

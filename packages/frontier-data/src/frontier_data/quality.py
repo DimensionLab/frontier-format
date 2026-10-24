@@ -38,6 +38,7 @@ import numpy as np
 from arrayroute.backends import NumpyBackend
 from arrayroute.ordered import OrderedSelection, read_flat
 from arrayroute.reader import ArrayReader, ReadStats
+from arrayroute.session import LocalReadSession
 from frontier_data.dataset import Dataset, SampleMeta, write_json
 from frontier_data.mesh import SurfaceMesh
 from frontier_data.splits import TrajectoryFingerprint, find_leakage, find_trajectory_leakage
@@ -82,6 +83,7 @@ class SampleStats:
     cd_pressure: float | None = None
     cd_reference: float | None = None
     transient: Any = None  # quality_transient.TransientSampleResult for non-steady-surface samples
+    read_policy: dict[str, Any] | None = None
 
 
 def _status_from(value: float, warn: float, fail: float) -> Status:
@@ -376,9 +378,9 @@ def check_trajectory_split_leakage(
 # -- driver -----------------------------------------------------------------------------
 
 
-def _sample_pass(ds: Dataset, sid: str) -> SampleStats:
+def _sample_pass(ds: Dataset, sid: str, session: LocalReadSession) -> SampleStats:
     meta = ds.meta(sid)
-    mesh = ds.surface(sid, 0)
+    mesh = ds.surface(sid, 0, session=session)
     checks = [
         check_nan_inf(mesh),
         check_degenerate_faces(mesh),
@@ -543,12 +545,14 @@ def _is_steady_surface(ds: Dataset, sid: str) -> bool:
     return e.sample_kind == "surface" and e.temporal != "transient"
 
 
-def _generic_pass(ds: Dataset, sid: str, series_points: int) -> SampleStats:
+def _generic_pass(
+    ds: Dataset, sid: str, series_points: int, session: LocalReadSession
+) -> SampleStats:
     """Per-sample pass for everything that is not a steady surface (format v1.1)."""
     from frontier_data.quality_transient import transient_sample_pass
 
     entry = ds.entry(sid)
-    sample = ds.sample(sid)
+    sample = ds.sample(sid, session=session)
     group = entry.group
     if group is None:
         try:
@@ -562,7 +566,7 @@ def _generic_pass(ds: Dataset, sid: str, series_points: int) -> SampleStats:
     area = 0.0
     if sample.kind == "surface":
         # the geometry of a transient surface is static: its mesh checks still apply
-        mesh = ds.surface(sid, 0, fields=False)
+        mesh = ds.surface(sid, 0, fields=False, session=session)
         area = mesh.area
         checks += [
             check_degenerate_faces(mesh),
@@ -604,16 +608,38 @@ def series_points_for(ds: Dataset) -> int:
     return 200 if n_generic <= 100 else 50
 
 
-def compute_sample_stats(ds: Dataset, sid: str, *, series_points: int | None = None) -> SampleStats:
+def compute_sample_stats(
+    ds: Dataset,
+    sid: str,
+    *,
+    series_points: int | None = None,
+    session: LocalReadSession | None = None,
+) -> SampleStats:
     """The per-sample pass of :func:`run_quality` for one sample: every check and statistic
     that needs only that sample. It reads the sample's arrays and nothing else, so samples can
     be processed in any order and in other processes; hand the results to ``run_quality`` as
     ``precomputed``."""
+    session = session or LocalReadSession()
     if _is_steady_surface(ds, sid):
-        return _sample_pass(ds, sid)
-    if series_points is None:
-        series_points = series_points_for(ds)
-    return _generic_pass(ds, sid, series_points)
+        result = _sample_pass(ds, sid, session)
+    else:
+        if series_points is None:
+            series_points = series_points_for(ds)
+        result = _generic_pass(ds, sid, series_points, session)
+    result.read_policy = {
+        key: getattr(session, key)
+        for key in (
+            "engine",
+            "buffer_bytes",
+            "max_open_arrays",
+            "tensorstore_threads",
+            "tensorstore_cache_bytes",
+            "immutable",
+            "read_strategy",
+            "gather_workers",
+        )
+    }
+    return result
 
 
 def run_quality(
@@ -625,6 +651,7 @@ def run_quality(
     precomputed: Mapping[str, SampleStats] | None = None,
     mean_outlier_action: Literal["fail", "warn"] = "fail",
     dataset_location: str | Path | None = None,
+    session: LocalReadSession | None = None,
 ) -> dict[str, Any]:
     """Run every check, write ``quality/report.json`` (+ ``report.html``) and return the report.
 
@@ -635,8 +662,11 @@ def run_quality(
     modified.
     ``dataset_location`` records the final location when evaluating a private staging
     directory before atomic publication; numerical reads still use ``ds.root``.
+    ``session`` selects the local ArrayRoute engine and resource policy. Worker policies
+    remain attached to precomputed samples; this merger does not overwrite them.
     """
     t0 = time.perf_counter()
+    session = session or LocalReadSession()
     ids = ds.sample_ids
     stats: dict[str, SampleStats] = {}
     # keep the report small for datasets with many trajectories
@@ -651,7 +681,7 @@ def run_quality(
             # the dataset-level steps below append checks and z-scores to the entry
             stats[sid] = copy.deepcopy(ready)
         else:
-            stats[sid] = compute_sample_stats(ds, sid, series_points=series_points)
+            stats[sid] = compute_sample_stats(ds, sid, series_points=series_points, session=session)
         if progress:
             progress(f"checked {sid}", k + 1, len(ids))
 
@@ -791,6 +821,7 @@ def run_quality(
                 "n_points": s.n_points,
                 "n_faces": s.n_faces,
                 "area": s.area,
+                "read_policy": s.read_policy,
                 "cd_reference": s.cd_reference,
                 "cd_integrated": s.cd_integrated,
                 "cd_pressure": s.cd_pressure,

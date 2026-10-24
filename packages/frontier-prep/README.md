@@ -175,3 +175,30 @@ plugin manifest. Its package release number does not need to match Frontier's re
 ## Documentation
 
 - [Data-preparation specification](../../docs/spec/data-prep.md)
+
+## Quality-reader configuration
+
+`prep.quality.check` 1.2.0 accepts a shared ArrayRoute `reader` configuration and a per-worker
+`read_buffer_mib` allowance. They are recipe parameters, so worker execution and replay use
+the recorded policy. First-frame hashing uses the same session as the sample's quality scan.
+
+```json
+{
+  "reader": {
+    "engine": "tensorstore",
+    "tensorstore_threads": 8,
+    "tensorstore_cache_bytes": 134217728,
+    "immutable": false
+  },
+  "read_buffer_mib": 128,
+  "frame_hashes": true,
+  "write_report": true
+}
+```
+
+Install the optional reader engine before choosing it. A nonzero TensorStore cache is a soft
+limit separate from read buffers; multiply session allowances by worker count. Numerical
+scratch, FFTs and retained results need additional memory. `immutable: true` is an explicit
+promise that input array values and metadata will not change during the session, not a
+snapshot implementation. The default keeps freshness checks enabled. Per-sample policies
+are recorded in the quality report, including results transported from worker processes.

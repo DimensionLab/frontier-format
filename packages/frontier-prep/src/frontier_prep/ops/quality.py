@@ -15,6 +15,8 @@ from typing import Any, ClassVar, Literal
 from pydantic import Field
 
 from arrayroute.ordered import update_digest
+from arrayroute.settings import ReadSettings
+from frontier_data.arrays import Sample
 from frontier_data.dataset import Dataset, Manifest
 from frontier_prep.base import BaseOp, DatasetRef, SampleOutcome
 from frontier_prep.io import SampleEditor
@@ -66,6 +68,17 @@ def _series_points(ds: Dataset) -> int:
 
 
 class CheckParams(Params):
+    reader: ReadSettings = Field(
+        default_factory=lambda: ReadSettings(tensorstore_threads=8),
+        description="ArrayRoute engine, native threads, cache and immutable-input assertion.",
+    )
+    read_buffer_mib: int = Field(
+        default=128,
+        ge=1,
+        description=("Per-worker read allowance in MiB; codec, cache and numerical scratch "
+                     "are additional."),
+    )
+
     mean_outlier_action: Literal["fail", "warn"] = Field(
         default="fail",
         description=(
@@ -89,7 +102,7 @@ class CheckParams(Params):
 @register
 class QualityCheck(BaseOp):
     id = "prep.quality.check"
-    version = "1.1.0"
+    version = "1.2.0"
     category = "quality"
     summary = (
         "Run every frontier-data quality check (closure checks first) and record each result as an "
@@ -116,6 +129,7 @@ class QualityCheck(BaseOp):
 
     def apply_sample(self, ed: SampleEditor, params: CheckParams, *, seed: int) -> SampleOutcome:
         stats: dict[str, Any] = {}
+        session = params.reader.session(params.read_buffer_mib << 20)
         root = ed.dir.parent.parent
         transient = True  # without a manifest entry, hash as before
         if (root / "manifest.json").is_file():
@@ -131,10 +145,12 @@ class QualityCheck(BaseOp):
                 # pool. A dataclass tree with arrays in it: it crosses the process boundary
                 # pickled (as every worker result does) and ``apply_manifest`` takes it out
                 # of the outcome again, so it never reaches a record.
-                st = compute_sample_stats(ds, ed.id, series_points=_series_points(ds))
+                st = compute_sample_stats(
+                    ds, ed.id, series_points=_series_points(ds), session=session
+                )
                 stats[_SAMPLE_STATS] = pickle.dumps(st, protocol=pickle.HIGHEST_PROTOCOL)
         if params.frame_hashes and transient:
-            s = ed.sample
+            s = Sample.open(ed.dir, ed.id, session=session)
             h = hashlib.sha256()
             for name in s.field_names():
                 loc = "cell" if name in s.field_names("cell") else None
@@ -176,6 +192,7 @@ class QualityCheck(BaseOp):
                 precomputed=precomputed,
                 mean_outlier_action=params.mean_outlier_action,
                 dataset_location=".",
+                session=params.reader.session(params.read_buffer_mib << 20),
             )
             manifest.quality = "quality/report.json"
         else:
@@ -187,6 +204,7 @@ class QualityCheck(BaseOp):
                     precomputed=precomputed,
                     mean_outlier_action=params.mean_outlier_action,
                     dataset_location=".",
+                    session=params.reader.session(params.read_buffer_mib << 20),
                 )
         hashed = [o for o in outcomes if "frame0" in o.stats]
         groups: dict[str, list[str]] = {}

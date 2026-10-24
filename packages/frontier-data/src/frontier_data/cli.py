@@ -879,15 +879,47 @@ def synth_cmd(
 def quality_cmd(
     dataset: Annotated[Path, typer.Argument(help="Dataset directory")],
     html: Annotated[bool, typer.Option(help="Write report.html too")] = True,
+    engine: Annotated[
+        str, typer.Option(help="ArrayRoute engine: zarr-python, tensorstore, zarrista")
+    ] = "zarr-python",
+    read_buffer_mib: Annotated[
+        int, typer.Option(min=1, help="Read allowance in MiB; numerical scratch is additional")
+    ] = 128,
+    native_threads: Annotated[
+        int, typer.Option(min=1, max=256, help="TensorStore native threads")
+    ] = 8,
+    cache_mib: Annotated[
+        int,
+        typer.Option(min=0, help="TensorStore cache soft limit in MiB, additional to read buffers"),
+    ] = 0,
+    immutable_inputs: Annotated[
+        bool,
+        typer.Option(
+            help="Assert inputs stay unchanged; allows TensorStore to skip freshness checks"
+        ),
+    ] = False,
 ) -> None:
-    """Run quality checks and write quality/report.json and report.html"""
+    """Run quality checks and write quality/report.json and report.html."""
+    from arrayroute.settings import ReadSettings
     from frontier_data.dataset import Dataset
     from frontier_data.quality import run_quality
 
     _setup_logging(False)
+    try:
+        settings = ReadSettings(
+            engine=engine,
+            tensorstore_threads=native_threads,
+            tensorstore_cache_bytes=cache_mib << 20,
+            immutable=immutable_inputs,
+        )
+    except (ValueError, TypeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
     ds = Dataset(dataset)
     rep = run_quality(
-        ds, write_html=html, progress=lambda msg, d, t: console.print(f"  [{d}/{t}] {msg}")
+        ds,
+        write_html=html,
+        progress=lambda msg, d, t: console.print(f"  [{d}/{t}] {msg}"),
+        session=settings.session(read_buffer_mib << 20),
     )
     s = rep["summary"]
     colour = {"pass": "green", "warn": "yellow", "fail": "red"}[s["status"]]
