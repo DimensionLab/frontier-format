@@ -516,8 +516,8 @@ or `compute_sample_stats`; create it with `ReadSettings(...).session(buffer_byte
 
 The cache is a TensorStore soft limit in addition to read buffers. Numerical reductions,
 FFT workspaces, report/probe storage, retained geometry and native codec memory are also
-additional. Static fields and spectral crops must fit the selected read allowance; larger
-selections require an explicitly larger allowance. This is not a process memory limit.
+additional. Spectral crops must fit the selected read allowance; larger crops require
+an explicitly larger allowance. This is not a process memory limit.
 Each preparation worker has its own session and allowances.
 
 Freshness checks stay enabled by default. `--immutable-inputs` asserts that array values and
@@ -533,3 +533,25 @@ byte order, probe selection and the versioned numerical reduction order remain u
 Preparation workers each own their hashing pipeline; account for these workers and buffers
 when setting outer parallelism. A scan returns only after hashing succeeds, and closes its
 worker if reading or numerical processing fails.
+
+Non-transient fields on grid/mesh/point-cloud samples, and reported signal-field statistics,
+now use exact ArrayRoute finite statistics with 32 MiB of numerical workspace by default. They can
+exceed the read allowance without full-array materialization. Static non-finite and geometry
+point checks use bounded count scans. Each field summary records its algorithm, float64
+conversion, exact percentile scope, pass count and selected-byte SHA-256 in the
+`nan_inf_per_step` check's `field_statistics` detail. Changed bytes between passes cause a
+failure. Mean/std reduction semantics are versioned by `prep.quality.check` 1.3.0; percentiles
+retain full-selection linear semantics. Original data and physical units are not rewritten.
+
+These changes do not bound every quality stage: steady-surface mesh statistics, signal
+normalization, static-velocity CFL percentiles, mesh connectivity and FFT workspace still
+have separate materialization requirements. Reader/native cache allowances remain additional
+to numerical workspace. Exact bounded percentiles may cost additional reads; choose and
+measure the reader/cache policy for the actual immutable dataset revision.
+
+Set `statistics_workspace_bytes` on `run_quality` / `compute_sample_stats`,
+`--statistics-workspace-mib` on `frontier-data quality`, or `statistics_workspace_mib`
+on `prep.quality.check` to change that allowance (minimum 4 MiB). It applies per worker,
+in addition to read buffers and native caches. Increasing it can reduce the number of
+passes without changing the scientific results in the same runtime. Reports retain the
+workspace and pass count actually used by each worker, even when merged elsewhere.

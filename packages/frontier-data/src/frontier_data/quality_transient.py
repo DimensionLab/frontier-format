@@ -3,8 +3,9 @@
 
 :func:`transient_sample_pass` is the per-sample pass that :func:`frontier_data.quality.run_quality`
 uses for every sample that is not a steady surface. Field scans use bounded ArrayRoute
-batches across steps; spectra select the spatial crop before reading. Signal normalization
-and static checks have separate materialization requirements. The pass yields these checks:
+batches across steps; spectra select the spatial crop before reading. Other field summaries
+and static non-finite checks stream bounded reads. Signal normalization, geometry checks and
+FFT workspaces have separate materialization requirements. The pass yields these checks:
 
 * ``nan_inf_per_step``: non-finite values per step and field.
 * ``temporal_continuity``: jumps, frozen frames, duplicated steps, and the ``times`` axis.
@@ -41,9 +42,10 @@ import numpy as np
 from arrayroute.backends import NumpyBackend
 from arrayroute.hashing import DigestPipeline
 from arrayroute.ordered import OrderedSelection, read_flat
+from arrayroute.quantiles import count_nonfinite
 from arrayroute.reader import ArrayReader
 from arrayroute.statistics import CompensatedSum
-from frontier_data.quality import CheckResult, Status, field_stats
+from frontier_data.quality import CheckResult, Status, field_stats, streamed_field_stats
 from frontier_data.splits import TrajectoryFingerprint
 
 if TYPE_CHECKING:
@@ -1621,6 +1623,7 @@ def transient_sample_pass(
     parameters: dict[str, float] | None = None,
     series_points: int = SERIES_MAX_POINTS,
     max_scan_steps: int = MAX_SCAN_STEPS,
+    statistics_workspace_bytes: int = 32 << 20,
 ) -> TransientSampleResult:
     """Run every per-sample check on a v1.1 sample of any kind (steady samples only get
     ``nan_inf_per_step`` and field statistics) and collect the series for the report."""
@@ -1630,6 +1633,7 @@ def transient_sample_pass(
     fields: dict[str, dict[str, float]] = {}
     shapes: dict[str, list[int]] = {}
     other_bad: dict[str, int] = {}
+    summaries: dict[str, dict[str, Any]] = {}
     scans: list[FieldScan] = []
     stride = 1
     signal = transient and is_signal_sample(sample)
@@ -1643,18 +1647,22 @@ def transient_sample_pass(
             fields[fname] = _scan_field_stats(scan)
             shapes[fname] = [int(v) for v in arr.shape[1:]]
         else:
-            data = sample._reader(arr).read(
-                (slice(None),) * len(arr.shape), stats=sample.read_stats
+            fields[fname], summaries[fname] = streamed_field_stats(
+                sample._reader(arr), stats=sample.read_stats,
+                workspace_bytes=statistics_workspace_bytes,
             )
-            fields[fname] = field_stats(data)
-            shapes[fname] = [int(v) for v in data.shape]
-            other_bad[fname] = int((~np.isfinite(data)).sum())
+            shapes[fname] = [int(v) for v in arr.shape]
+            other_bad[fname] = int(fields[fname]["n_nan"] + fields[fname]["n_inf"])
     for sname in info.static_names:
-        data = sample.static(sname)
-        if data.dtype.kind == "f":
-            other_bad[f"static/{sname}"] = int((~np.isfinite(data)).sum())
+        arr = sample.array(f"static/{sname}")
+        if arr.dtype.kind in "biuf":
+            other_bad[f"static/{sname}"] = sum(
+                count_nonfinite(sample._reader(arr), stats=sample.read_stats)
+            )
     if "points" in sample.group and sample.kind != "grid":
-        other_bad["points"] = int((~np.isfinite(sample.points())).sum())
+        other_bad["points"] = sum(
+            count_nonfinite(sample._reader(sample.group["points"]), stats=sample.read_stats)
+        )
 
     float_fields = sorted(n for n in info.names if np.dtype(info.arrays[n].dtype).kind == "f")
     if signal:
@@ -1663,15 +1671,21 @@ def transient_sample_pass(
         stride = max(stride, st)
         scans.insert(0, scan_signals(info, steps))
         for n in sample.signal_names:
-            data = np.asarray(sample.signal(n))
-            fields[f"signals/{n}"] = field_stats(data)
-            shapes[f"signals/{n}"] = [int(v) for v in data.shape[1:]]
-            other_bad[f"signals/{n}"] = int((~np.isfinite(data)).sum())
+            arr = sample.array(f"signals/{n}")
+            key = f"signals/{n}"
+            fields[key], summaries[key] = streamed_field_stats(
+                sample._reader(arr), stats=sample.read_stats,
+                workspace_bytes=statistics_workspace_bytes,
+            )
+            shapes[key] = [int(v) for v in arr.shape[1:]]
+            other_bad[key] = int(fields[key]["n_nan"] + fields[key]["n_inf"])
         float_fields = ["signals"]
     checks: list[CheckResult] = [
         check_nan_inf_per_step(scans, other_bad, stride),
         check_predictable_fields(float_fields, scans if transient else None),
     ]
+    if summaries:
+        checks[0].detail["field_statistics"] = summaries
     n_steps = int(len(times)) if times is not None else 1
     dt = _median_dt(times)
     result = TransientSampleResult(

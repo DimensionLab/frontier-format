@@ -37,6 +37,7 @@ import numpy as np
 
 from arrayroute.backends import NumpyBackend
 from arrayroute.ordered import OrderedSelection, read_flat
+from arrayroute.quantiles import finite_statistics
 from arrayroute.reader import ArrayReader, ReadStats
 from arrayroute.session import LocalReadSession
 from frontier_data.dataset import Dataset, SampleMeta, write_json
@@ -131,6 +132,26 @@ def field_stats(arr: np.ndarray) -> dict[str, float]:
         "n_nan": float(np.isnan(a).sum()),
         "n_inf": float(np.isinf(a).sum()),
     }
+
+
+def streamed_field_stats(
+    reader: ArrayReader, *, stats: ReadStats | None = None, workspace_bytes: int = 32 << 20,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Exact full-selection percentiles and canonical moments in bounded scratch."""
+    summary = finite_statistics(reader, stats=stats, workspace_bytes=workspace_bytes)
+    values = {
+        "mean": summary.mean, "std": summary.std,
+        "min": summary.minimum, "max": summary.maximum,
+        "p01": summary.quantiles[0], "p99": summary.quantiles[1],
+        "n_nan": float(summary.n_nan), "n_inf": float(summary.n_inf),
+    }
+    provenance = {
+        "algorithm": summary.algorithm, "percentile_scope": "full_selection",
+        "percentile_method": "linear", "conversion": "float64",
+        "finite_count": summary.count, "passes": summary.passes,
+        "selected_bytes_sha256": summary.source_sha256, "workspace_bytes": workspace_bytes,
+    }
+    return values, provenance
 
 
 def check_nan_inf(mesh: SurfaceMesh) -> CheckResult:
@@ -546,7 +567,8 @@ def _is_steady_surface(ds: Dataset, sid: str) -> bool:
 
 
 def _generic_pass(
-    ds: Dataset, sid: str, series_points: int, session: LocalReadSession
+    ds: Dataset, sid: str, series_points: int, session: LocalReadSession,
+    statistics_workspace_bytes: int,
 ) -> SampleStats:
     """Per-sample pass for everything that is not a steady surface (format v1.1)."""
     from frontier_data.quality_transient import transient_sample_pass
@@ -560,7 +582,8 @@ def _generic_pass(
         except (OSError, ValueError):
             group = None
     res = transient_sample_pass(
-        sample, group=group, parameters=dict(entry.parameters), series_points=series_points
+        sample, group=group, parameters=dict(entry.parameters), series_points=series_points,
+        statistics_workspace_bytes=statistics_workspace_bytes,
     )
     checks = list(res.checks)
     area = 0.0
@@ -614,18 +637,20 @@ def compute_sample_stats(
     *,
     series_points: int | None = None,
     session: LocalReadSession | None = None,
+    statistics_workspace_bytes: int = 32 << 20,
 ) -> SampleStats:
     """The per-sample pass of :func:`run_quality` for one sample: every check and statistic
     that needs only that sample. It reads the sample's arrays and nothing else, so samples can
     be processed in any order and in other processes; hand the results to ``run_quality`` as
     ``precomputed``."""
+    _validate_statistics_workspace(statistics_workspace_bytes)
     session = session or LocalReadSession()
     if _is_steady_surface(ds, sid):
         result = _sample_pass(ds, sid, session)
     else:
         if series_points is None:
             series_points = series_points_for(ds)
-        result = _generic_pass(ds, sid, series_points, session)
+        result = _generic_pass(ds, sid, series_points, session, statistics_workspace_bytes)
     result.read_policy = {
         key: getattr(session, key)
         for key in (
@@ -642,6 +667,11 @@ def compute_sample_stats(
     return result
 
 
+def _validate_statistics_workspace(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 4 << 20:
+        raise ValueError("statistics_workspace_bytes must be an integer of at least 4 MiB")
+
+
 def run_quality(
     ds: Dataset,
     *,
@@ -652,6 +682,7 @@ def run_quality(
     mean_outlier_action: Literal["fail", "warn"] = "fail",
     dataset_location: str | Path | None = None,
     session: LocalReadSession | None = None,
+    statistics_workspace_bytes: int = 32 << 20,
 ) -> dict[str, Any]:
     """Run every check, write ``quality/report.json`` (+ ``report.html``) and return the report.
 
@@ -664,7 +695,10 @@ def run_quality(
     directory before atomic publication; numerical reads still use ``ds.root``.
     ``session`` selects the local ArrayRoute engine and resource policy. Worker policies
     remain attached to precomputed samples; this merger does not overwrite them.
+    ``statistics_workspace_bytes`` bounds exact finite-statistics scratch per worker,
+    in addition to reader buffers and native caches. Its minimum is 4 MiB.
     """
+    _validate_statistics_workspace(statistics_workspace_bytes)
     t0 = time.perf_counter()
     session = session or LocalReadSession()
     ids = ds.sample_ids
@@ -681,7 +715,10 @@ def run_quality(
             # the dataset-level steps below append checks and z-scores to the entry
             stats[sid] = copy.deepcopy(ready)
         else:
-            stats[sid] = compute_sample_stats(ds, sid, series_points=series_points, session=session)
+            stats[sid] = compute_sample_stats(
+                ds, sid, series_points=series_points, session=session,
+                statistics_workspace_bytes=statistics_workspace_bytes,
+            )
         if progress:
             progress(f"checked {sid}", k + 1, len(ids))
 

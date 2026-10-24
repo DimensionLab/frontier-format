@@ -68,6 +68,10 @@ def _series_points(ds: Dataset) -> int:
 
 
 class CheckParams(Params):
+    statistics_workspace_mib: int = Field(
+        default=32, ge=4, strict=True,
+        description="Exact-statistics scratch per worker in MiB, additional to read buffers.",
+    )
     reader: ReadSettings = Field(
         default_factory=lambda: ReadSettings(tensorstore_threads=8),
         description="ArrayRoute engine, native threads, cache and immutable-input assertion.",
@@ -102,7 +106,7 @@ class CheckParams(Params):
 @register
 class QualityCheck(BaseOp):
     id = "prep.quality.check"
-    version = "1.2.0"
+    version = "1.3.0"
     category = "quality"
     summary = (
         "Run every frontier-data quality check (closure checks first) and record each result as an "
@@ -146,7 +150,8 @@ class QualityCheck(BaseOp):
                 # pickled (as every worker result does) and ``apply_manifest`` takes it out
                 # of the outcome again, so it never reaches a record.
                 st = compute_sample_stats(
-                    ds, ed.id, series_points=_series_points(ds), session=session
+                    ds, ed.id, series_points=_series_points(ds), session=session,
+                    statistics_workspace_bytes=params.statistics_workspace_mib << 20,
                 )
                 stats[_SAMPLE_STATS] = pickle.dumps(st, protocol=pickle.HIGHEST_PROTOCOL)
         if params.frame_hashes and transient:
@@ -193,6 +198,7 @@ class QualityCheck(BaseOp):
                 mean_outlier_action=params.mean_outlier_action,
                 dataset_location=".",
                 session=params.reader.session(params.read_buffer_mib << 20),
+                statistics_workspace_bytes=params.statistics_workspace_mib << 20,
             )
             manifest.quality = "quality/report.json"
         else:
@@ -205,6 +211,7 @@ class QualityCheck(BaseOp):
                     mean_outlier_action=params.mean_outlier_action,
                     dataset_location=".",
                     session=params.reader.session(params.read_buffer_mib << 20),
+                    statistics_workspace_bytes=params.statistics_workspace_mib << 20,
                 )
         hashed = [o for o in outcomes if "frame0" in o.stats]
         groups: dict[str, list[str]] = {}

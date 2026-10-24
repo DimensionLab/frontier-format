@@ -885,6 +885,9 @@ def quality_cmd(
     read_buffer_mib: Annotated[
         int, typer.Option(min=1, help="Read allowance in MiB; numerical scratch is additional")
     ] = 128,
+    statistics_workspace_mib: Annotated[
+        int, typer.Option(min=4, help="Exact-statistics scratch per worker in MiB")
+    ] = 32,
     native_threads: Annotated[
         int, typer.Option(min=1, max=256, help="TensorStore native threads")
     ] = 8,
@@ -920,6 +923,7 @@ def quality_cmd(
         write_html=html,
         progress=lambda msg, d, t: console.print(f"  [{d}/{t}] {msg}"),
         session=settings.session(read_buffer_mib << 20),
+        statistics_workspace_bytes=statistics_workspace_mib << 20,
     )
     s = rep["summary"]
     colour = {"pass": "green", "warn": "yellow", "fail": "red"}[s["status"]]
