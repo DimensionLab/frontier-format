@@ -1,12 +1,12 @@
 [project]
 name = "frontier-data"
-version = "0.9.19"
+version = "0.9.20"
 description = "DimensionLab Frontier – dataset ingestion, quality and splits for CFD surrogate training"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
-  "arrayroute>=0.1.52,<0.2",
+  "arrayroute>=0.1.62,<0.2",
   "frontier-plugins>=1,<2",
   "scipy>=1.13",
   "numpy>=1.26",

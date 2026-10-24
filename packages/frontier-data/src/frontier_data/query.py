@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -13,6 +13,7 @@ import numpy as np
 from arrayroute import ArrayReader, ReadPlan, ReadStats, Tile
 from arrayroute.concurrency import ConcurrencyPlan, plan_concurrency
 from arrayroute.quality import ErrorAccumulator, ErrorAssessment
+from arrayroute.rows import read_rows
 from arrayroute.session import LocalReadSession
 
 if TYPE_CHECKING:
@@ -156,6 +157,43 @@ class ArrayFieldReader:
                     FieldResult(values, dimensions, self.units, self.association, self.snapshot_id),
                 )
                 del values
+
+    def read_rows(
+        self,
+        indices: Sequence[int],
+        *,
+        selectors: Mapping[str, int | slice] | None = None,
+        coalesce: bool = True,
+        stats: ReadStats | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> FieldResult:
+        """Read a batch along the first declared dimension in exact caller order.
+
+        Additional named selectors apply only to the remaining dimensions. Duplicate
+        and negative row indices are supported without changing sampler order. Units,
+        association and revision follow the same contract as an ordinary field read.
+        The output plus working buffers must fit the reader's configured allowance.
+        """
+        if not self.dimensions:
+            raise ValueError("Row batches require a field with at least one dimension")
+        selectors = {} if selectors is None else selectors
+        if self.dimensions[0] in selectors:
+            raise ValueError("Select the leading dimension with row indices, not selectors")
+        tail = self.selection(selectors)[1:]
+        values = read_rows(
+            self.reader, indices, tail=tail, coalesce=coalesce, stats=stats,
+            cancelled=cancelled,
+        )
+        return FieldResult(
+            values,
+            (self.dimensions[0],) + tuple(
+                dim for dim, item in zip(self.dimensions[1:], tail, strict=True)
+                if isinstance(item, slice)
+            ),
+            self.units,
+            self.association,
+            self.snapshot_id,
+        )
 
     @contextmanager
     def prefetch(

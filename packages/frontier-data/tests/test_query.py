@@ -441,6 +441,17 @@ def test_snapshot_field_keeps_data_and_scientific_metadata_on_same_revision(tmp_
     assert result.units == "Pa" and result.association == "cell"
     assert result.snapshot_id == old_id and result.dimensions == ("x", "y")
     assert result.values.tobytes() == data[1].tobytes()
+    batch = original.read_rows([1, -2, 1], selectors={"x": 1, "y": slice(None, None, 2)})
+    assert batch.values.tobytes() == data[[1, 0, 1], 1, ::2].tobytes()
+    assert batch.dimensions == ("time", "y")
+    assert batch.units == "Pa" and batch.association == "cell"
+    assert batch.snapshot_id == old_id
+    with pytest.raises(ValueError, match="leading dimension"):
+        original.read_rows([0], selectors={"time": 1})
+    with pytest.raises(ValueError, match="Unknown dimensions"):
+        original.read_rows([0], selectors={"not_a_dimension": 1})
+    with pytest.raises(InterruptedError):
+        original.read_rows([0], cancelled=lambda: True)
     for _, tile in original.stream({"time": 1}):
         assert tile.snapshot_id == old_id and tile.units == "Pa"
     with original.prefetch({"time": 1}) as tiles:

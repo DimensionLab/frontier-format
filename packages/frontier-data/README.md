@@ -377,6 +377,27 @@ exactly the same revision later. Exports never replace existing files. The Pytho
 retention remains the owner's responsibility. This command does not yet register a remote
 snapshot as a canvas dataset or replace the training catalog.
 
+For overlapping training windows, the same field reader supports ordered batches:
+
+```python
+from arrayroute.budget import ReadBudget
+from arrayroute.snapshot import FilesystemRepository, Snapshot, SnapshotReadSession
+from frontier_data.query import SnapshotFieldReader
+
+revision = Snapshot.resolve(FilesystemRepository("simulation.icechunk"), branch="main")
+pool = ReadBudget(128 << 20)
+storage = SnapshotReadSession(revision, buffer_bytes=64 << 20, read_budget=pool)
+field = SnapshotFieldReader(storage, "velocity")
+batch = field.read_rows([12, 3, 12, -1], selectors={"component": 0})
+print(batch.dimensions, batch.units, batch.snapshot_id)
+```
+
+Rows select the first declared dimension; named selectors apply to the remaining axes.
+Output order and duplicates are preserved. Units and association come from the same
+committed revision as values. Each reader thread owns its own session; thread sessions
+can share the pool. Construct new pools after process spawn. The pool bounds planned
+read/output buffers, not total process memory or results retained by the training loop.
+
 Inspection latency can be measured on an existing unchanged dataset with
 `python -m frontier_data.benchmark_inspection --dataset ./dataset --output ./inspection-results`.
 The output directory must be outside the dataset. The benchmark compares fresh CLI processes
