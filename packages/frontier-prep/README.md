@@ -214,7 +214,7 @@ from normalization scratch; the latter arrays still grow with the number of time
 
 ## Fit training-field normalization
 
-`prep.fields.normalize` 2.0.0 fits complete finite channel rows from a declared split.
+`prep.fields.normalize` 2.1.0 fits complete finite channel rows from a declared split.
 A missing, empty, duplicated, unknown or overlapping split fails instead of falling back
 to all samples. All training timesteps are included by default; set `max_steps` explicitly
 for deterministic evenly spaced sampling. Validation and inference reuse the recorded
@@ -227,6 +227,7 @@ coefficients without fitting their own statistics.
   "max_steps": null,
   "read_engine": "tensorstore",
   "read_buffer_mib": 128,
+  "read_ahead": true,
   "statistics_workspace_mib": 32,
   "tensorstore_cache_mib": 64
 }
@@ -245,10 +246,21 @@ selected-value SHA-256 fingerprints and read policy. Fingerprints cover selected
 field bytes, not every source file or time coordinate; preparation's input version supplies
 that wider identity. Exact replay requires fixed sources, sample grouping/order, selections,
 dtypes and numerical runtime. Different read buffers/workspaces preserve fitted values.
-Results can differ from the previous numerical algorithm; the op version marks that change.
+Version 2.0.0 introduced the current numerical algorithm; 2.1.0 retains its fitted values
+while overlapping reads and optimizing extrema reductions for narrow fields.
 
 Numeric workspace admission requires at least `channels * (4096 * 128 + 256)` bytes.
 Ordered read intervals contain at most 65,536 rows and shrink with available workspace and
-read allowance. Native caches, source buffers, sample metadata and worker multiplicity are
+read allowance. By default one ArrayRoute worker reads ahead while the consumer hashes and
+reduces the current interval. At most two owned intervals are retained, including the one
+being consumed; their combined size is no greater than the read allowance. Backend read
+buffers are separate. Set `read_ahead: false` for synchronous reading. Both paths preserve
+the fitted coefficients and selected-value fingerprints; the choice is recorded in the
+read policy. Closing or failure joins in-flight reads before returning. The low-level
+`fit_field` cancellation callback is checked between reads and blocks and must be
+thread-safe; it cannot interrupt blocking backend I/O or a pending shared-buffer admission.
+This callback is not yet connected to cancellation of the public preparation operation.
+
+Native caches, source buffers, sample metadata and worker multiplicity are
 additional to numeric scratch. This is not a global process-memory limit. Full fitting
 scans every selected value; sampling changes the fit and is recorded explicitly.

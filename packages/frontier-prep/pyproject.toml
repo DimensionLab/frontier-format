@@ -1,6 +1,6 @@
 [project]
 name = "frontier-prep"
-version = "0.9.13"
+version = "0.9.14"
 description = "DimensionLab Frontier – deterministic, auditable data-preparation operations for physics datasets"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

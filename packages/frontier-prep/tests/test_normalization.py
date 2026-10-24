@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 import hashlib
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
 
 from arrayroute.backends import NumpyBackend
+from arrayroute.budget import ReadBudget
 from arrayroute.reader import ArrayReader, ReadStats
 from frontier_data import DatasetWriter
 from frontier_prep.base import DatasetRef
@@ -21,7 +24,11 @@ def test_statistics_replay_across_budgets_and_nonfinite_rows():
     for budget in [1024, 1 << 20, 16 << 20]:
         for workspace in [2 << 20, 32 << 20]:
             reader = ArrayReader(NumpyBackend(x), buffer_bytes=budget)
-            answers.append(fit_field(reader, [None], workspace_bytes=workspace, stats=ReadStats()))
+            for read_ahead in [False, True]:
+                answers.append(fit_field(
+                    reader, [None], workspace_bytes=workspace, stats=ReadStats(),
+                    read_ahead=read_ahead,
+                ))
     assert all(answer == answers[0] for answer in answers)
     valid = x[np.isfinite(x).all(axis=1)]
     result = answers[0]
@@ -100,9 +107,11 @@ def test_training_only_streamed_grid_statistics(tmp_path, engine, steps):
         None if steps is None else [0, 3, 6]
     )
     # Resource policy is intentionally recorded; fitted values and identities are invariant.
-    repeat = run(ref, NormalizeParams(read_buffer_mib=1, max_steps=steps))
+    repeat = run(ref, NormalizeParams(read_buffer_mib=1, max_steps=steps, read_ahead=False))
     assert result["fields"] == repeat["fields"]
     assert result["source_fields"] == repeat["source_fields"]
+    assert result["read_policy"]["read_ahead"] is True
+    assert repeat["read_policy"]["read_ahead"] is False
     assert json.dumps(result, allow_nan=False)
 
 
@@ -149,3 +158,112 @@ def test_no_matching_fields_cannot_publish_empty_normalization(tmp_path):
     ref, _ = dataset(tmp_path)
     with pytest.raises(ValueError, match="No fields selected"):
         run(ref, NormalizeParams(fields=["absent"]))
+
+
+@pytest.mark.parametrize("channels", [1, 3, 8, 9, 17])
+@pytest.mark.parametrize("dtype", ["f4", "f8", "i4"])
+def test_extrema_and_strided_selection_replay(channels, dtype):
+    x = np.random.default_rng(3).integers(-10, 11, (7, 5003, channels)).astype(dtype)
+    if dtype.startswith("f"):
+        x[:, ::2, 0] = -0.
+        x[:, 1::2, 0] = 0.
+        x[:, ::17, -1] = np.nan
+    selections = [(step, slice(1, None, 3), slice(None)) for step in [0, 4, 6]]
+    results = []
+    for read_ahead in [False, True]:
+        reader = ArrayReader(NumpyBackend(x), buffer_bytes=1 << 20)
+        results.append(fit_field(
+            reader, selections, workspace_bytes=32 << 20, stats=ReadStats(),
+            read_ahead=read_ahead,
+        ))
+    assert results[0] == results[1]
+    expected = np.concatenate([x[s].reshape(-1, channels) for s in selections])
+    assert results[0]["sha256"] == hashlib.sha256(expected.tobytes()).hexdigest()
+    valid = expected[np.isfinite(expected).all(axis=1)]
+    for key, reference in [("min", valid.min(axis=0)), ("max", valid.max(axis=0))]:
+        # Compare bits as well: positive/negative zero remain distinguishable.
+        assert np.asarray(results[0][key], dtype=dtype).tobytes() == reference.tobytes()
+
+
+@pytest.mark.parametrize("read_ahead", [False, True])
+def test_cancellation_before_any_source_read(read_ahead):
+    class Unreadable(NumpyBackend):
+        def read(self, selection):
+            raise AssertionError("cancelled source must not be read")
+
+    with pytest.raises(InterruptedError):
+        fit_field(
+            ArrayReader(Unreadable(np.zeros((5, 3)))), [None],
+            workspace_bytes=32 << 20, stats=ReadStats(), read_ahead=read_ahead,
+            cancelled=lambda: True,
+        )
+
+
+def test_read_failure_propagates_and_joins_worker():
+    calls = []
+
+    class Failing(NumpyBackend):
+        def read(self, selection):
+            calls.append(threading.current_thread())
+            if len(calls) == 2:
+                raise OSError("source unavailable")
+            return super().read(selection)
+
+    with pytest.raises(OSError, match="source unavailable"):
+        fit_field(
+            ArrayReader(Failing(np.zeros((200000, 3))), buffer_bytes=1 << 20),
+            [None], workspace_bytes=32 << 20, stats=ReadStats(),
+        )
+    assert len(calls) == 2
+    assert all(not thread.is_alive() for thread in calls)
+
+
+def test_consumer_failure_joins_inflight_read(monkeypatch):
+    import frontier_prep.normalization as module
+
+    started, release, consumer_failed = threading.Event(), threading.Event(), threading.Event()
+    calls = []
+
+    class Blocking(NumpyBackend):
+        def read(self, selection):
+            calls.append(threading.current_thread())
+            if len(calls) == 2:
+                started.set()
+                assert release.wait(5)
+            return super().read(selection)
+
+    def fail(self, values, valid=None):
+        assert started.wait(5)
+        consumer_failed.set()
+        raise RuntimeError("consumer failed")
+
+    monkeypatch.setattr(module.CanonicalChannelMoments, "update", fail)
+    with ThreadPoolExecutor(max_workers=1) as caller:
+        job = caller.submit(
+            fit_field,
+            ArrayReader(Blocking(np.zeros((200000, 3))), buffer_bytes=1 << 20),
+            [None], workspace_bytes=32 << 20, stats=ReadStats(),
+        )
+        try:
+            assert consumer_failed.wait(5)
+            assert not job.done()
+        finally:
+            release.set()
+        with pytest.raises(RuntimeError, match="consumer failed"):
+            job.result(timeout=5)
+    assert len(calls) == 2
+    assert all(not thread.is_alive() for thread in calls)
+
+
+def test_shared_read_allowance_does_not_deadlock_or_leak():
+    x = np.arange(20003 * 3, dtype="f4").reshape(-1, 3)
+    pool = ReadBudget(1 << 20)
+    reader = ArrayReader(NumpyBackend(x), buffer_bytes=1 << 20, shared_budget=pool)
+    with ThreadPoolExecutor(max_workers=1) as caller:
+        job = caller.submit(
+            fit_field, reader, [None], workspace_bytes=32 << 20, stats=ReadStats(),
+        )
+        result = job.result(timeout=5)
+    assert result["sha256"] == hashlib.sha256(x.tobytes()).hexdigest()
+    with pool.reserve(pool.max_bytes):
+        pass

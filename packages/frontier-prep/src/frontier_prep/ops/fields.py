@@ -978,12 +978,13 @@ class NormalizeParams(Params):
     read_buffer_mib: int = Field(default=128, ge=1, strict=True)
     statistics_workspace_mib: int = Field(default=32, ge=1, strict=True)
     tensorstore_cache_mib: int = Field(default=0, ge=0, strict=True)
+    read_ahead: bool = Field(default=True, strict=True)
 
 
 @register
 class NormalizeStats(BaseOp):
     id = "prep.fields.normalize"
-    version = "2.0.0"
+    version = "2.1.0"
     category = "fields"
     summary = (
         "Fit per-field normalisation statistics on the training split only and record them in the "
@@ -1056,6 +1057,7 @@ class NormalizeStats(BaseOp):
                 selections,
                 workspace_bytes=params.statistics_workspace_mib << 20,
                 stats=stats,
+                read_ahead=params.read_ahead,
             )
             acc[name].update(units=reader.units, selected_steps=selected_steps)
             ed.bytes_read += stats.output_bytes
@@ -1139,6 +1141,7 @@ class NormalizeStats(BaseOp):
                     "buffer_mib": params.read_buffer_mib,
                     "statistics_workspace_mib": params.statistics_workspace_mib,
                     "tensorstore_cache_mib": params.tensorstore_cache_mib,
+                    "read_ahead": params.read_ahead,
                 },
             }
         return [
