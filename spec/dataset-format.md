@@ -61,8 +61,8 @@ metadata and also accept existing `/` keys (`c/0/0/0`); existing datasets need n
 conversion. Both encodings are part of the same dataset format.
 
 Time: transient samples carry `times (T,)` f64 at the group root and every time-dependent
-array has time as its **first** axis, chunked one step (or a few) per chunk so a viewer or
-loader can fetch a single step. Every field array carries the attribute
+array has time as its **first** axis. Readers follow its recorded chunk/shard layout;
+a time selection may decode adjacent frames sharing the same chunk. Every field array carries the attribute
 `dims = ["time","point","component"]` (or `["time","x","y","component"]`, `["cell","component"]`,
 ...). Readers must use `dims`; when absent the v1 default `["point"|"cell","component"]`
 applies. Moving meshes add `points_t (T,N,D)`. Static inputs (geometry, material maps, BC
@@ -72,8 +72,15 @@ Additions (v1.1, backward compatible; reference: `packages/frontier-data/README.
 global signals (force coefficients over time, probes, ODE outputs) live in the sample's store
 as `signals/<name>` shaped `(T, C)` with `dims = ["time","component"]`; cell-centred grids set
 the root attribute `location: "cell"` (`coords` are then cell centres, default `"node"`); every
-store carries the root attribute `sample_kind`; small per-step arrays may group up to 16 steps
-per chunk; rollout predictions are a sample store of the same kind with fields
+store carries the root attribute `sample_kind`. Time chunk sizes are storage policy, not
+a format limit. Default grid writers use ArrayRoute `bounded-spatiotemporal-grid-v2`:
+small complete frames share at most 512 KiB and 4096 time steps per chunk, while large
+frames retain one time step with bounded spatial chunks and shards. Explicit step limits
+remain supported. Array `storage_layout` attributes record the algorithm and effective
+limits; Zarr metadata records the actual chunks and shards. Repacking changes encoded
+objects, not the logical schema or decoded values. Other sample kinds and incremental
+appenders have their own chunk policies. Rollout predictions are a sample store of the
+same kind with fields
 `<field>_pred|_true|_err[|_std]`, uploaded as the run artifact `predictions/<sid>.zarr.tar`.
 Step-by-step writing: `frontier_data.SampleAppender` / `DatasetWriter.append_sample`.
 

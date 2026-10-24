@@ -2,7 +2,7 @@
 """Reader/writer for the ``frontier-dataset`` v1 / v1.1 directory layout.
 
 v1.1 (``docs/spec/dataset-format.md``) adds ``mesh.zarr``, ``grid.zarr`` and ``points.zarr``
-samples, transient arrays (time first, ``times``, ``dims`` attrs, one step per chunk) and
+samples, transient arrays (time first, ``times``, ``dims`` attrs, bounded time chunks) and
 ``static/`` inputs. The array writers and the lazy :class:`~frontier_data.arrays.Sample` reader
 live in :mod:`frontier_data.arrays` and are re-exported here.
 
