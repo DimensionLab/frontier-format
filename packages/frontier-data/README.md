@@ -129,6 +129,57 @@ Run `python -m frontier_data <command> --help` for the flags.
 | `frontier_data.ingest`      | `ingest_the_well`, `convert_the_well`, `ingest_meshgraphnets`, `convert_meshgraphnets`                                                            |
 | `frontier_data.pipeline`    | `Pipeline`, `PipelineRunner`, `register` for JSON-serialisable ingest pipelines                                                                   |
 | `frontier_data.predictions` | `write_transient_prediction`, `read_transient_prediction`, `pack_prediction_store`                                                                |
+| `frontier_data.prediction_view` | `PredictionView`: selected prediction/reference/error reads and budgeted tile streams through ArrayRoute |
+| `frontier_data.grid_export` | Selected-frame ParaView export, with provenance and unit checks |
+
+## Explore and export long prediction rollouts
+
+Use the chunked prediction store for interactive reads. `read_transient_prediction` still
+materializes the NPZ rollout; it is not the API for browsing large results.
+
+```python
+from arrayroute.session import LocalReadSession
+from frontier_data.prediction_view import PredictionView
+
+view = PredictionView("./predictions", "case-1",
+                      session=LocalReadSession(buffer_bytes=128 << 20))
+print(view.field_names, view.n_steps, view.time_units)
+frame = view.read("velocity", "pred", selection=view.frame_selection("velocity", 12))
+print(view.time(12), view.units("velocity"))
+for tile, values in view.stream("velocity", "true"):
+    # Process this tile before requesting another; do not retain all tiles in RAM.
+    print(tile.destination, values.shape)
+```
+
+LocalReadSession selects Zarr-Python, TensorStore or Zarrista. Values and ordering are
+unchanged. The source must remain immutable throughout the session. Read allowances cover
+outputs and planned decoded tiles; caches, codec scratch, Python metadata and values retained
+by the caller are additional. `view.stats` exposes measured read counts and planned bytes.
+`stream` checks cancellation between tiles; `read` checks before and after a selection.
+Neither can interrupt a blocking storage call.
+
+```sh
+frontier-prediction-export --predictions ./predictions --dataset ./dataset \
+  --sample case-1 --fields velocity pressure --start 0 --stop 100 --stride 2 \
+  --buffer-mib 256 --out ./paraview
+```
+
+Open the resulting `flow.pvd` in ParaView. Frame indices retain their original absolute
+simulation times in seconds; coordinates and per-field units are included. This command
+requires a 3D uniform grid, matching dataset-manifest hash, coordinates and physical units.
+It reads selected fields one frame at a time. Per-frame admission includes NumPy result and
+workspace arrays; VTK's native allocations are additional, so the allowance is not an RSS cap.
+The completed directory appears atomically and never replaces an existing destination.
+Handled failures and cancellation remove staging; power-loss recovery is not provided.
+
+If a prediction declares validity masks, those masks must be chunked `fields/<name>_valid`
+arrays matching the field shape and containing only zero/one. NPZ-only masks produce an
+actionable error; they are never ignored. Invalid cells export as NaN alongside explicit
+validity fields. `write_transient_prediction(..., validity=masks)` and the training prediction
+path now record both the chunked masks and evaluator sidecar. Older NPZ-only masked results
+must be regenerated or explicitly converted before using this exporter.
+The comparison-dataset and service-response helpers retain their current eager behavior;
+this change does not make those independent consumers streaming.
 
 ## Inspect before reading payloads
 

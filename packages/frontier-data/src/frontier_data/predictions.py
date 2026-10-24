@@ -107,12 +107,15 @@ def write_transient_prediction(
     static: Mapping[str, np.ndarray] | None = None,
     write_zarr: bool = True,
     field_units: Mapping[str, str] | None = None,
+    validity: Mapping[str, np.ndarray] | None = None,
 ) -> Path:
     """Write ``<sid>.npz`` + ``<sid>.json`` (+ ``<sid>.zarr``). ``pred[name]`` and
     ``true[name]`` are ``(T, X, Y[, Z], C)`` for ``kind="grid"`` or ``(T, N, C)`` for
     ``"mesh"`` / ``"point_cloud"`` (then ``points`` is required, ``cells`` for a mesh).
     ``field_units`` maps original field names to units; prediction, truth, signed error
-    and ensemble standard deviation retain the same units. No unit conversion occurs."""
+    and ensemble standard deviation retain the same units. No unit conversion occurs.
+    Validity masks match every field's shape; zero means unobserved. They are recorded
+    both in the evaluator sidecar and as dimensionless chunked ``<name>_valid`` fields."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     times = np.asarray(times, dtype=np.float64)
@@ -121,6 +124,16 @@ def write_transient_prediction(
         raise ValueError(f"pred fields {names} != true fields {list(true)}")
     p = {k: np.asarray(v, dtype=np.float32) for k, v in pred.items()}
     t = {k: np.asarray(true[k], dtype=np.float32) for k in names}
+    masks = None
+    if validity is not None:
+        if set(validity) != set(names):
+            raise ValueError("Validity masks must cover exactly the predicted fields")
+        masks = {}
+        for name in names:
+            mask = np.asarray(validity[name])
+            if mask.shape != p[name].shape or not np.isin(mask, [0, 1]).all():
+                raise ValueError(f"{name}: validity must match field shape and contain zero/one")
+            masks[name] = mask.astype(np.uint8)
     for k in names:
         if p[k].shape != t[k].shape or p[k].shape[0] != len(times):
             raise ValueError(
@@ -144,6 +157,9 @@ def write_transient_prediction(
         arrays["spacing"] = np.asarray(spacing, dtype=np.float64)
     np.savez_compressed(out_dir / f"{sample_id}.npz", **arrays)
     meta = {"id": sample_id, "kind": kind, "n_steps": int(len(times)), **dict(info or {})}
+    if masks is not None:
+        np.savez_compressed(out_dir / f"{sample_id}.validity.npz", **masks)
+        meta["validity_file"] = f"{sample_id}.validity.npz"
     if field_units is not None:
         meta["field_units"] = dict(field_units)
     if len(times) > 1:
@@ -170,6 +186,7 @@ def write_transient_prediction(
             std,
             str(meta.get("time_units", "s")),
             field_units,
+            masks,
         )
     return out_dir / f"{sample_id}.npz"
 
@@ -189,6 +206,7 @@ def _write_store(
     std: Mapping[str, np.ndarray] | None = None,
     time_units: str = "s",
     field_units: Mapping[str, str] | None = None,
+    validity: Mapping[str, np.ndarray] | None = None,
 ) -> None:
     """Reuse the dataset writers in a scratch directory, then move the store into place."""
     from frontier_data.arrays import write_grid_sample, write_mesh_sample, write_points_sample
@@ -201,12 +219,16 @@ def _write_store(
         fields[f"{k}_err"] = pred[k] - true[k]
         if std is not None and k in std:
             fields[f"{k}_std"] = std[k]
+        if validity is not None:
+            fields[f"{k}_valid"] = validity[k]
     units = {
         f"{name}_{suffix}": unit
         for name, unit in (field_units or {}).items()
         for suffix in ("pred", "true", "err", "std")
         if f"{name}_{suffix}" in fields
     }
+    if validity is not None:
+        units.update({f"{name}_valid": "1" for name in validity})
     tmp = path.parent / f".{path.stem}.tmp"
     if tmp.exists():
         shutil.rmtree(tmp)
@@ -316,7 +338,7 @@ def list_transient_predictions(out_dir: str | Path) -> list[str]:
         ids = json.loads(path.read_text()).get("samples")
         if isinstance(ids, list):
             return [str(i) for i in ids]
-    return sorted(p.stem for p in out_dir.glob("*.npz"))
+    return sorted(p.stem for p in out_dir.glob("*.npz") if not p.name.endswith(".validity.npz"))
 
 
 def pack_prediction_store(
